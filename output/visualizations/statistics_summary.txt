@@ -1,0 +1,22 @@
+GenRecGraph Dataset and Graph Statistics
+==================================================
+
+DATASET STATISTICS:
+--------------------
+Total Ratings: 14,207,186
+Unique Users: 111,427
+Unique Movies: 18,533
+Rating Range: 3.0 - 5.0
+Average Rating: 3.89
+
+GRAPH STATISTICS:
+--------------------
+Total Nodes: 178,598
+Total Edges: 14,207,186
+Users: 150,846
+Movies: 27,752
+Graph Density: 0.001697
+Average User Degree: 127.50
+Average Movie Degree: 766.59
+Maximum User Degree: 7750
+Maximum Movie Degree: 53712
