@@ -95,11 +95,16 @@ class RecommendationEngine:
     
     def _create_id_mappings(self):
         """Create mappings between external and internal IDs."""
-        # Example: Assuming your graph has user and movie node attributes
-        self.user_id_map = {user_id: idx for idx, user_id in enumerate(self.graph['user_ids'])}
-        self.movie_id_map = {movie_id: idx + len(self.user_id_map) 
-                           for idx, movie_id in enumerate(self.graph['movie_ids'])}
-        self.reverse_movie_map = {v: k for k, v in self.movie_id_map.items()}
+        # For users (0 to num_users-1)
+        self.user_id_map = {i: i for i in range(self.graph.num_users)}
+        
+        # For movies (num_users to num_users+num_movies-1)
+        self.movie_id_map = {i: i + self.graph.num_users 
+                           for i in range(self.graph.num_movies)}
+        
+        # Create reverse mapping for movies
+        self.reverse_movie_map = {v - self.graph.num_users: k 
+                                for k, v in self.movie_id_map.items()}
     
     def get_user_embeddings(self, user_ids: List[Union[int, str]]) -> torch.Tensor:
         """Get embeddings for the specified users."""
