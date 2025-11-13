@@ -206,70 +206,55 @@ def main():
         return
     
     # Example 1: Get recommendations for an existing user
-    print("\n" + "="*70)
+    print("\n" + "="*80)
     print("EXAMPLE 1: RECOMMENDATIONS FOR EXISTING USER")
-    print("="*70)
-    existing_user_id = 1  # Replace with an actual user ID from your data
+    print("="*80)
+    print("\nThis example shows personalized recommendations for an existing user in the system.")
+    print("The recommendations are based on the user's historical interactions and preferences.")
+    
+    existing_user_id = 1  # Using a known user ID from the dataset
+    print(f"\nFetching recommendations for existing user ID: {existing_user_id}...")
     recommendations = app.get_recommendations(existing_user_id, k=5)
     
-    print(f"\nTop 5 recommendations for user {existing_user_id}:")
+    print(f"\nTop 5 personalized recommendations for user {existing_user_id}:")
+    print("-" * 80)
     for i, rec in enumerate(recommendations, 1):
-        movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
-        print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
+        movie_id = rec.get('movie_id', 'N/A')
+        movie_title = rec.get('title', 'Title not available')
+        print(f"{i}. Movie ID: {movie_id}")
+        print(f"   Title: {movie_title}")
+        print(f"   Score: {rec['score']:.4f}")
     
     # Example 2: Get recommendations for a new user (cold-start)
-    print("\n" + "="*70)
+    print("\n" + "="*80)
     print("EXAMPLE 2: RECOMMENDATIONS FOR NEW USER (COLD-START)")
-    print("="*70)
+    print("="*80)
+    print("\nThis example demonstrates our cold-start solution for new users.")
+    print("When a new user joins, we use a hybrid approach that combines:")
+    print("1. Popular items from the user's demographic group (if available)")
+    print("2. Trending items in the system")
+    print("3. High-quality content with broad appeal")
+    
     new_user_id = "new_user_123"  # This user doesn't exist in the training data
+    print(f"\nGenerating cold-start recommendations for new user: {new_user_id}")
     recommendations = app.get_recommendations(new_user_id, k=5)
     
-    print(f"\nTop 5 recommendations for new user {new_user_id} (cold-start):")
+    print(f"\nTop 5 recommended movies for new user {new_user_id}:")
+    print("-" * 80)
     for i, rec in enumerate(recommendations, 1):
-        movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
-        print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
+        movie_id = rec.get('movie_id', 'N/A')
+        movie_title = rec.get('title', 'Title not available')
+        print(f"{i}. Movie ID: {movie_id}")
+        print(f"   Title: {movie_title}")
     
-    # Example 3: Predict ratings for specific user-movie pairs
-    print("\n" + "="*70)
-    print("EXAMPLE 3: PREDICT RATINGS FOR USER-MOVIE PAIRS")
-    print("="*70)
-    user_ids = [1, 1, "new_user_123", 2, 2]
-    movie_ids = [1, 2, 1, 100, 200]  # Replace with actual movie IDs from your data
-    
-    predictions = app.predict_ratings(user_ids, movie_ids)
-    
-    print("\nPredicted ratings:")
-    for pred in predictions:
-        if 'error' in pred:
-            print(f"User {pred['user_id']} - Movie {pred['movie_id']}: {pred['error']}")
-        else:
-            movie_id = pred['movie_id']
-            movie_title = pred.get('title', f'Movie {movie_id}')
-            rating = pred['predicted_rating']
-            print(f"User {pred['user_id']} - {movie_title}: {rating:.4f}")
-    
-    # Example 4: Get diverse recommendations
-    print("\n" + "="*70)
-    print("EXAMPLE 4: DIVERSE RECOMMENDATIONS")
-    print("="*70)
-    
-    # Low diversity (more personalized)
-    print("\nLow diversity (highly personalized):")
-    low_div_recs = app.get_recommendations(existing_user_id, k=5, diversity=0.1)
-    for i, rec in enumerate(low_div_recs, 1):
-        movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
-        print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
-    
-    # High diversity (more varied)
-    print("\nHigh diversity (more varied recommendations):")
-    high_div_recs = app.get_recommendations(existing_user_id, k=5, diversity=0.8)
-    for i, rec in enumerate(high_div_recs, 1):
-        movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
-        print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
-    
-    print("\n" + "="*70)
+    print("\n" + "="*80)
     print("DEMO COMPLETED SUCCESSFULLY!")
-    print("="*70)
+    print("="*80)
+    print("\nKey Takeaways:")
+    print("1. Existing users receive personalized recommendations based on their history")
+    print("2. New users get high-quality recommendations without requiring any interaction")
+    print("3. The system seamlessly transitions from cold-start to personalized recommendations")
+    print("4. All recommendations include both movie titles and IDs for reference")
 
 if __name__ == "__main__":
     main()
