@@ -206,19 +206,15 @@ def main():
     logger.info("="*50)
 
     decoder_metrics = compare_decoders(
+        graph=graph_data,
         encoder=encoder,
-        graph=graph,
+        decoder_config=config['model']['decoder'],
+        training_config=config['training'],
         device=device,
-        decoder_types=config['model']['decoder']['types'],
-        output_dir=str(output_dir),
-        num_epochs=config['training']['num_epochs'],
-        lr=config['training']['learning_rate'],
-        weight_decay=config['training']['weight_decay'],
-        patience=config['training']['patience'],
-        decoder_kwargs={
-            'hidden_dims': config['model']['decoder']['hidden_dims'],
-            'dropout': config['model']['decoder']['dropout']
-        }
+        output_dir=output_dir,
+        embedding_dim=encoder.get_embedding_dim(),
+        num_users=graph_data['num_users'],
+        num_movies=graph_data['num_movies']
     )
 
     # Print results
