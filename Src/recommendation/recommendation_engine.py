@@ -78,8 +78,17 @@ class RecommendationEngine:
         loader = MovieLensLoader(data_path)
         builder = BipartiteGraphBuilder()
         
-        # Get the graph data
-        self.graph = builder.build_graph(loader.load())
+        # Load and prepare the data
+        all_data = loader.load_all_data()
+        filtered_ratings = loader.filter_data(min_user_interactions=20, min_movie_interactions=5)
+        encoded_ratings, encoding_info = loader.encode_ids(filtered_ratings)
+        
+        # Build the bipartite graph
+        self.graph = builder.build_bipartite_graph(
+            ratings=encoded_ratings,
+            movies=all_data['movies'],
+            encoding_info=encoding_info
+        )
         
         # Create ID mappings
         self._create_id_mappings()
