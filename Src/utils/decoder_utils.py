@@ -33,7 +33,7 @@ def train_decoder(
     graph: Data,
     device: torch.device,
     decoder_type: str,
-    num_epochs: int = 50,
+    num_epochs: int = 100,
     lr: float = 0.01,
     weight_decay: float = 5e-4,
     patience: int = 10,
@@ -132,18 +132,30 @@ def train_decoder(
         
         # Forward pass - handle different decoder types
         if isinstance(decoder, GraphVAEDecoder):
-            # VAE decoder returns a dict with 'recon' key
+            # VAE decoder returns a dict - extract the output tensor
             pos_out_dict = decoder(user_emb, movie_emb)
             neg_out_dict = decoder(neg_user_emb, neg_movie_emb)
-            pos_out = pos_out_dict['recon']
-            neg_out = neg_out_dict['recon']
+            
+            # Try different possible keys for the reconstruction
+            if isinstance(pos_out_dict, dict):
+                # Common keys: 'recon', 'reconstruction', 'out', 'output', 'pred'
+                for key in ['recon', 'reconstruction', 'out', 'output', 'pred']:
+                    if key in pos_out_dict:
+                        pos_out = pos_out_dict[key]
+                        neg_out = neg_out_dict[key]
+                        break
+                else:
+                    # If no known key found, use the first value
+                    pos_out = list(pos_out_dict.values())[0]
+                    neg_out = list(neg_out_dict.values())[0]
+            else:
+                # If it's not a dict, use it directly
+                pos_out = pos_out_dict
+                neg_out = neg_out_dict
         elif isinstance(decoder, AutoregressiveDecoder):
-            # Autoregressive decoder expects 3D input [batch, seq_len, features]
-            # Combine user and movie embeddings as a sequence
-            pos_seq = torch.stack([user_emb, movie_emb], dim=1)  # [batch, 2, emb_dim]
-            neg_seq = torch.stack([neg_user_emb, neg_movie_emb], dim=1)
-            pos_out = decoder(pos_seq)
-            neg_out = decoder(neg_seq)
+            # Autoregressive decoder expects separate user_emb and movie_emb
+            pos_out = decoder(user_emb, movie_emb)
+            neg_out = decoder(neg_user_emb, neg_movie_emb)
         elif isinstance(decoder, (MLPDecoder, BilinearDecoder)):
             # These decoders already apply sigmoid
             pos_out = decoder(user_emb, movie_emb)
@@ -162,8 +174,11 @@ def train_decoder(
         
         # Add KL divergence for VAE
         if isinstance(decoder, GraphVAEDecoder):
-            kl_loss = pos_out_dict.get('kl_loss', 0) + neg_out_dict.get('kl_loss', 0)
-            loss = loss + 0.001 * kl_loss  # Small weight for KL term
+            # Extract KL loss if available in the dict
+            if isinstance(pos_out_dict, dict):
+                kl_loss = pos_out_dict.get('kl_loss', 0) + neg_out_dict.get('kl_loss', 0)
+                if kl_loss != 0:
+                    loss = loss + 0.001 * kl_loss  # Small weight for KL term
         
         # Backward pass
         loss.backward()
@@ -239,15 +254,27 @@ def evaluate(
         
         # Handle different decoder types in evaluation
         if isinstance(decoder, GraphVAEDecoder):
-            # VAE returns dict
-            pos_pred = decoder(pos_user_emb, pos_movie_emb)['recon'].cpu()
-            neg_pred = decoder(neg_user_emb, neg_movie_emb)['recon'].cpu()
+            # VAE returns dict or tensor
+            pos_out = decoder(pos_user_emb, pos_movie_emb)
+            neg_out = decoder(neg_user_emb, neg_movie_emb)
+            
+            # Extract tensor from dict if needed
+            if isinstance(pos_out, dict):
+                for key in ['recon', 'reconstruction', 'out', 'output', 'pred']:
+                    if key in pos_out:
+                        pos_pred = pos_out[key].cpu()
+                        neg_pred = neg_out[key].cpu()
+                        break
+                else:
+                    pos_pred = list(pos_out.values())[0].cpu()
+                    neg_pred = list(neg_out.values())[0].cpu()
+            else:
+                pos_pred = pos_out.cpu()
+                neg_pred = neg_out.cpu()
         elif isinstance(decoder, AutoregressiveDecoder):
-            # Autoregressive expects 3D input
-            pos_seq = torch.stack([pos_user_emb, pos_movie_emb], dim=1)
-            neg_seq = torch.stack([neg_user_emb, neg_movie_emb], dim=1)
-            pos_pred = decoder(pos_seq).cpu()
-            neg_pred = decoder(neg_seq).cpu()
+            # Autoregressive expects separate embeddings
+            pos_pred = decoder(pos_user_emb, pos_movie_emb).cpu()
+            neg_pred = decoder(neg_user_emb, neg_movie_emb).cpu()
         elif isinstance(decoder, (MLPDecoder, BilinearDecoder)):
             # Already applies sigmoid
             pos_pred = decoder(pos_user_emb, pos_movie_emb).cpu()
@@ -292,7 +319,7 @@ def compare_decoders(
         Dictionary of metrics for each decoder
     """
     if decoder_types is None:
-        decoder_types = ['mlp', 'vae', 'autoregressive', 'bilinear']
+        decoder_types = ['inner_product', 'mlp', 'vae', 'autoregressive', 'bilinear']
     
     os.makedirs(output_dir, exist_ok=True)
     all_metrics = {}
@@ -320,7 +347,7 @@ def compare_decoders(
                 device=device,
                 decoder_type=decoder_type,
                 output_dir=output_dir,
-                num_epochs=training_config.get('num_epochs', 50),
+                num_epochs=training_config.get('num_epochs', 100),
                 lr=training_config.get('learning_rate', 0.01),
                 weight_decay=training_config.get('weight_decay', 5e-4),
                 patience=training_config.get('patience', 10)
