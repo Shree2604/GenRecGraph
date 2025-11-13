@@ -62,7 +62,6 @@ def train_decoder(
     
     # Handle both PyG Data objects and dictionaries
     if isinstance(graph, dict):
-        # Convert dictionary to PyG Data object
         from torch_geometric.data import Data
         data = Data(
             x=graph['x'],
@@ -72,9 +71,15 @@ def train_decoder(
     else:
         data = graph
     
-    # Get node embeddings
-    with torch.no_grad():
+    # Get node embeddings - keep gradient flow for inner product decoder
+    if decoder_type == 'inner_product':
+        # For inner product decoder, we need gradients through embeddings
         embeddings = encoder(data.x.to(device), data.edge_index.to(device))
+        embeddings.requires_grad_(True)
+    else:
+        # For other decoders, detach embeddings
+        with torch.no_grad():
+            embeddings = encoder(data.x.to(device), data.edge_index.to(device))
     
     # Prepare data
     pos_edge_index = data.edge_index
@@ -92,11 +97,16 @@ def train_decoder(
     pos_train, pos_val, pos_test = pos_train.to(device), pos_val.to(device), pos_test.to(device)
     neg_train, neg_val, neg_test = neg_train.to(device), neg_val.to(device), neg_test.to(device)
     
-    # Optimizer - only include parameters that require gradients
-    params = [p for p in decoder.parameters() if p.requires_grad]
-    if not params:  # For parameterless decoders like InnerProductDecoder
-        params = [nn.Parameter(torch.tensor(1.0, requires_grad=True))]
-    optimizer = optim.Adam(params, lr=lr, weight_decay=weight_decay)
+    # Optimizer - handle different decoder types
+    if decoder_type == 'inner_product':
+        # For inner product, optimize the embeddings directly
+        optimizer = optim.Adam([embeddings], lr=lr, weight_decay=weight_decay)
+    else:
+        params = [p for p in decoder.parameters() if p.requires_grad]
+        if not params:
+            params = [nn.Parameter(torch.tensor(1.0, requires_grad=True))]
+        optimizer = optim.Adam(params, lr=lr, weight_decay=weight_decay)
+    
     criterion = nn.BCELoss()
     
     # Training loop
@@ -115,18 +125,31 @@ def train_decoder(
         optimizer.zero_grad()
         
         # Get user and movie embeddings for the edges
-        user_emb = embeddings[pos_train[0]]  # [batch_size, embedding_dim]
-        movie_emb = embeddings[pos_train[1]]  # [batch_size, embedding_dim]
-        neg_user_emb = embeddings[neg_train[0]]  # [batch_size, embedding_dim]
-        neg_movie_emb = embeddings[neg_train[1]]  # [batch_size, embedding_dim]
+        user_emb = embeddings[pos_train[0]]
+        movie_emb = embeddings[pos_train[1]]
+        neg_user_emb = embeddings[neg_train[0]]
+        neg_movie_emb = embeddings[neg_train[1]]
         
         # Forward pass - handle different decoder types
-        if isinstance(decoder, (GraphVAEDecoder, MLPDecoder, BilinearDecoder, AutoregressiveDecoder)):
-            # These decoders already apply sigmoid in their forward pass
+        if isinstance(decoder, GraphVAEDecoder):
+            # VAE decoder returns a dict with 'recon' key
+            pos_out_dict = decoder(user_emb, movie_emb)
+            neg_out_dict = decoder(neg_user_emb, neg_movie_emb)
+            pos_out = pos_out_dict['recon']
+            neg_out = neg_out_dict['recon']
+        elif isinstance(decoder, AutoregressiveDecoder):
+            # Autoregressive decoder expects 3D input [batch, seq_len, features]
+            # Combine user and movie embeddings as a sequence
+            pos_seq = torch.stack([user_emb, movie_emb], dim=1)  # [batch, 2, emb_dim]
+            neg_seq = torch.stack([neg_user_emb, neg_movie_emb], dim=1)
+            pos_out = decoder(pos_seq)
+            neg_out = decoder(neg_seq)
+        elif isinstance(decoder, (MLPDecoder, BilinearDecoder)):
+            # These decoders already apply sigmoid
             pos_out = decoder(user_emb, movie_emb)
             neg_out = decoder(neg_user_emb, neg_movie_emb)
         else:
-            # Fallback for other decoders
+            # InnerProduct and other decoders
             pos_out = decoder(user_emb, movie_emb)
             neg_out = decoder(neg_user_emb, neg_movie_emb)
             pos_out = torch.sigmoid(pos_out)
@@ -137,12 +160,17 @@ def train_decoder(
         neg_loss = criterion(neg_out, torch.zeros_like(neg_out))
         loss = pos_loss + neg_loss
         
+        # Add KL divergence for VAE
+        if isinstance(decoder, GraphVAEDecoder):
+            kl_loss = pos_out_dict.get('kl_loss', 0) + neg_out_dict.get('kl_loss', 0)
+            loss = loss + 0.001 * kl_loss  # Small weight for KL term
+        
         # Backward pass
         loss.backward()
         optimizer.step()
         
         # Validation
-        val_auc, val_ap = evaluate(decoder, embeddings, pos_val, neg_val)
+        val_auc, val_ap = evaluate(decoder, embeddings, pos_val, neg_val, decoder_type)
         
         # Update metrics
         metrics['train_loss'].append(loss.item())
@@ -170,7 +198,7 @@ def train_decoder(
             )
     
     # Final evaluation on test set
-    test_auc, test_ap = evaluate(decoder, embeddings, pos_test, neg_test)
+    test_auc, test_ap = evaluate(decoder, embeddings, pos_test, neg_test, decoder_type)
     metrics['test_auc'] = test_auc
     metrics['test_ap'] = test_ap
     
@@ -185,7 +213,8 @@ def evaluate(
     decoder: nn.Module,
     embeddings: torch.Tensor,
     pos_edge_index: torch.Tensor,
-    neg_edge_index: torch.Tensor
+    neg_edge_index: torch.Tensor,
+    decoder_type: str = None
 ) -> Tuple[float, float]:
     """
     Evaluate decoder performance.
@@ -195,6 +224,7 @@ def evaluate(
         embeddings: Node embeddings
         pos_edge_index: Positive edges
         neg_edge_index: Negative edges
+        decoder_type: Type of decoder (for special handling)
         
     Returns:
         AUC and AP scores
@@ -208,10 +238,22 @@ def evaluate(
         neg_movie_emb = embeddings[neg_edge_index[1]]
         
         # Handle different decoder types in evaluation
-        if isinstance(decoder, (GraphVAEDecoder, MLPDecoder, BilinearDecoder, AutoregressiveDecoder)):
+        if isinstance(decoder, GraphVAEDecoder):
+            # VAE returns dict
+            pos_pred = decoder(pos_user_emb, pos_movie_emb)['recon'].cpu()
+            neg_pred = decoder(neg_user_emb, neg_movie_emb)['recon'].cpu()
+        elif isinstance(decoder, AutoregressiveDecoder):
+            # Autoregressive expects 3D input
+            pos_seq = torch.stack([pos_user_emb, pos_movie_emb], dim=1)
+            neg_seq = torch.stack([neg_user_emb, neg_movie_emb], dim=1)
+            pos_pred = decoder(pos_seq).cpu()
+            neg_pred = decoder(neg_seq).cpu()
+        elif isinstance(decoder, (MLPDecoder, BilinearDecoder)):
+            # Already applies sigmoid
             pos_pred = decoder(pos_user_emb, pos_movie_emb).cpu()
             neg_pred = decoder(neg_user_emb, neg_movie_emb).cpu()
         else:
+            # InnerProduct and others
             pos_pred = torch.sigmoid(decoder(pos_user_emb, pos_movie_emb)).cpu()
             neg_pred = torch.sigmoid(decoder(neg_user_emb, neg_movie_emb)).cpu()
         
@@ -293,6 +335,8 @@ def compare_decoders(
             
         except Exception as e:
             logger.error(f"Error with {decoder_type} decoder: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             all_metrics[decoder_type] = {'error': str(e)}
     
     # Save comparison results
@@ -317,16 +361,22 @@ def negative_sampling(edge_index, num_nodes, num_neg_samples=None):
     """Generate negative samples."""
     if num_neg_samples is None:
         num_neg_samples = edge_index.size(1)
+    
+    # Create edge set for quick lookup
+    edge_set = set()
+    for i in range(edge_index.size(1)):
+        edge_set.add((edge_index[0, i].item(), edge_index[1, i].item()))
+    
+    neg_edges = []
+    while len(neg_edges) < num_neg_samples:
+        src = torch.randint(0, num_nodes, (1,)).item()
+        dst = torch.randint(0, num_nodes, (1,)).item()
         
-    # Generate random negative edges
-    size = (2, num_neg_samples)
-    neg_edge_index = torch.randint(0, num_nodes, size, dtype=torch.long)
+        # Ensure it's not a self-loop and not an existing edge
+        if src != dst and (src, dst) not in edge_set:
+            neg_edges.append([src, dst])
     
-    # Remove false negatives
-    # (edges that are actually positive)
-    mask = (edge_index[0] == edge_index[1])
-    neg_edge_index = neg_edge_index[:, ~mask]
-    
+    neg_edge_index = torch.tensor(neg_edges, dtype=torch.long).t()
     return neg_edge_index
 
 def split_edges(edge_index, val_ratio=0.05, test_ratio=0.1):
