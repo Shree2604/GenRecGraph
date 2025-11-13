@@ -42,7 +42,8 @@ class SimpleEncoder(nn.Module):
         return self.encoder(x)
 
 def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn', 
-                   num_epochs: int = 50, learning_rate: float = 0.01) -> Tuple[torch.nn.Module, Dict]:
+                   num_epochs: int = 100, learning_rate: float = 0.01, 
+                   patience: int = 15) -> Tuple[torch.nn.Module, Dict]:
     """
     Train the graph encoder model.
     
@@ -52,6 +53,7 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
         encoder_type: Type of encoder to use ('gcn', 'gat', 'sage', 'simple')
         num_epochs: Number of training epochs
         learning_rate: Learning rate for optimizer
+        patience: Number of epochs to wait before early stopping
         
     Returns:
         Tuple of (trained_encoder, training_metrics)
@@ -130,6 +132,16 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
     
     start_time = time.time()
     
+    # Early stopping variables
+    best_val_loss = float('inf')
+    epochs_without_improvement = 0
+    best_model_state = None
+    
+    # Learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=5, verbose=True
+    )
+    
     for epoch in range(num_epochs):
         encoder.train()
         optimizer.zero_grad()
@@ -182,17 +194,51 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
         with torch.no_grad():
             encoder.eval()
             if edge_index is not None:
-                val_embeddings = encoder(x, edge_index)
+                if encoder_type == 'bipartite':
+                    val_embeddings = encoder(x, edge_index)  # Simplified for validation
+                else:
+                    val_embeddings = encoder(x, edge_index)
             else:
                 val_embeddings = encoder(x)
             val_loss = criterion(val_embeddings[val_idx], x[val_idx])
+            
+            # Update learning rate
+            scheduler.step(val_loss)
+            
+            # Early stopping check
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                epochs_without_improvement = 0
+                best_model_state = {k: v.cpu() for k, v in encoder.state_dict().items()}
+            else:
+                epochs_without_improvement += 1
+                if epochs_without_improvement >= patience:
+                    logger.info(f"Early stopping at epoch {epoch+1}")
+                    encoder.load_state_dict(best_model_state)
+                    break
         
         metrics['train_losses'].append(loss.item())
         metrics['val_losses'].append(val_loss.item())
         
-        if (epoch + 1) % 10 == 0:
-            logger.info(f'[{encoder_type.upper()}] Epoch {epoch+1}/{num_epochs}, ' 
-                      f'Train Loss: {loss.item():.4f}, Val Loss: {val_loss.item():.4f}')
+        # Log progress
+        current_lr = optimizer.param_groups[0]['lr']
+        logger.info(f"[{encoder_type.upper()}] Epoch {epoch+1}/{num_epochs}, "
+                  f"Train Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}, "
+                  f"LR: {current_lr:.6f}")
+    
+    # If early stopped, load the best model
+    if best_model_state is not None:
+        encoder.load_state_dict(best_model_state)
+    
+    # Save the final model
+    metrics = {
+        'train_loss': loss.item(),
+        'val_loss': best_val_loss.item(),
+        'training_time': time.time() - start_time,
+        'num_parameters': sum(p.numel() for p in encoder.parameters() if p.requires_grad),
+        'epochs_trained': epoch + 1,
+        'early_stopped': epochs_without_improvement >= patience
+    }
     
     metrics['training_time'] = time.time() - start_time
     logger.info(f'[{encoder_type.upper()}] Training completed in {metrics["training_time"]:.2f} seconds')
