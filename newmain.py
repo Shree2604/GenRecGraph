@@ -116,13 +116,13 @@ def main():
                 'dropout': 0.1
             },
             'decoder': {
-                'types': ['inner_product', 'mlp', 'vae', 'autoregressive', 'bilinear'],
+                'types': ['mlp', 'vae', 'autoregressive', 'bilinear'],
                 'hidden_dims': [128, 64],
                 'dropout': 0.1
             }
         },
         'training': {
-            'num_epochs': 100,
+            'num_epochs': 50,
             'learning_rate': 0.01,
             'weight_decay': 5e-4,
             'patience': 10,
