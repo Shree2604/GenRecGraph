@@ -14,6 +14,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 import logging
+import os
+import sys
+from typing import Dict, Optional
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +34,13 @@ from datapipe.movielens_loader import load_movielens_data
 from datapipe.graph_builder import BipartiteGraphBuilder
 from utils.visualization import create_visualizations
 from utils.validation import run_comprehensive_validation
+from utils.encoder_utils import (
+    train_encoder,
+    visualize_embeddings,
+    save_metrics,
+    save_recommendations,
+    save_encoder_checkpoint
+)
 
 
 def main():
@@ -151,6 +161,35 @@ def main():
 
         logger.info(f"Saved graph tensors to {output_dir / 'graph_tensors.pt'}")
 
+        # Train the graph encoder and generate outputs
+        logger.info("Training graph encoder and generating outputs...")
+        try:
+            # Train the encoder
+            encoder, metrics = train_encoder(graph, device, num_epochs=50, learning_rate=0.01)
+            
+            # Save the encoder checkpoint
+            save_encoder_checkpoint(encoder, metrics, output_dir)
+            
+            # Save embeddings
+            embeddings = metrics['embeddings']
+            torch.save(embeddings, output_dir / 'node_embeddings.pt')
+            np.save(output_dir / 'node_embeddings.npy', embeddings.cpu().numpy())
+            logger.info(f"Saved node embeddings to {output_dir / 'node_embeddings.pt'}")
+            
+            # Generate and save visualizations
+            logger.info("Generating embedding visualizations...")
+            visualize_embeddings(embeddings, output_dir)
+            
+            # Save training metrics
+            save_metrics(metrics, output_dir)
+            
+            # Generate example recommendations
+            save_recommendations(embeddings, output_dir=output_dir)
+            
+        except Exception as e:
+            logger.error(f"Error during encoder training: {e}", exc_info=True)
+            logger.info("Skipping encoder training...")
+
         if viz_dir:
             logger.info(f"Visualizations saved to {viz_dir}")
         logger.info("All outputs saved successfully!")
@@ -159,6 +198,8 @@ def main():
         logger.error(f"Error saving outputs: {e}")
         return
 
+
+# Encoder-related functions have been moved to utils/encoder_utils.py
 
 if __name__ == "__main__":
     main()
