@@ -84,11 +84,17 @@ class RecommendationEngine:
         encoded_ratings, encoding_info = loader.encode_ids(filtered_ratings)
         
         # Build the bipartite graph
-        self.graph = builder.build_bipartite_graph(
-            ratings=encoded_ratings,
-            movies=all_data['movies'],
-            encoding_info=encoding_info
-        )
+        try:
+            self.graph = builder.build_bipartite_graph(
+                ratings=encoded_ratings,
+                movies=all_data['movies'],
+                encoding_info=encoding_info
+            )
+        except AttributeError as e:
+            logger.error(f"Error building graph: {str(e)}")
+            logger.error("Available methods in BipartiteGraphBuilder: " + 
+                        ", ".join([m for m in dir(builder) if not m.startswith('_')]))
+            raise
         
         # Create ID mappings
         self._create_id_mappings()
