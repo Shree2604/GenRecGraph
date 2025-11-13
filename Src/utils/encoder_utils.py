@@ -137,26 +137,44 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
         # Forward pass
         if edge_index is not None:
             if encoder_type == 'bipartite':
-                # For bipartite, we need to handle the node types separately
-                num_users = getattr(graph, 'num_users', x.size(0) // 2)  # Default to half if not specified
-                
-                # Create masks for users and movies
-                user_mask = torch.zeros(x.size(0), dtype=torch.bool, device=x.device)
-                user_mask[:num_users] = True
-                movie_mask = ~user_mask
-                
                 try:
-                    # Get embeddings for each node type
-                    user_emb = encoder(x[user_mask], edge_index[:, edge_index[1] < user_mask.sum()])
-                    movie_emb = encoder(x[movie_mask], edge_index[:, edge_index[1] >= user_mask.sum()] - user_mask.sum())
+                    # For bipartite, we need to handle the node types separately
+                    num_users = getattr(graph, 'num_users', x.size(0) // 2)  # Default to half if not specified
                     
-                    # Combine embeddings
-                    combined_emb = torch.zeros_like(x)
-                    combined_emb[user_mask] = user_emb
-                    combined_emb[movie_mask] = movie_emb
-                    embeddings = combined_emb
+                    # Ensure num_users is within valid range
+                    num_users = min(max(num_users, 1), x.size(0) - 1)
+                    
+                    # Create masks for users and movies
+                    user_mask = torch.zeros(x.size(0), dtype=torch.bool, device=x.device)
+                    user_mask[:num_users] = True
+                    movie_mask = ~user_mask
+                    
+                    if not user_mask.any() or not movie_mask.any():
+                        raise ValueError("Invalid user/movie split - one of the partitions is empty")
+                    
+                    # Filter edges for users and movies
+                    user_edges_mask = edge_index[1] < user_mask.sum()
+                    movie_edges_mask = edge_index[1] >= user_mask.sum()
+                    
+                    # Only process if we have edges for both partitions
+                    if user_edges_mask.any() and movie_edges_mask.any():
+                        # Get embeddings for each node type
+                        user_emb = encoder(x[user_mask], edge_index[:, user_edges_mask])
+                        movie_emb = encoder(x[movie_mask], 
+                                         edge_index[:, movie_edges_mask] - user_mask.sum())
+                        
+                        # Combine embeddings
+                        combined_emb = torch.zeros_like(x)
+                        combined_emb[user_mask] = user_emb
+                        combined_emb[movie_mask] = movie_emb
+                        embeddings = combined_emb
+                    else:
+                        logger.warning("Not enough edges for bipartite processing, falling back to simple encoder")
+                        embeddings = encoder(x, edge_index)
+                        
                 except Exception as e:
                     logger.error(f"Error in bipartite encoder: {e}")
+                    logger.error("Falling back to simple encoder")
                     # Fall back to simple encoder behavior if bipartite fails
                     embeddings = encoder(x, edge_index)
             else:

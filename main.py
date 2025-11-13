@@ -173,7 +173,7 @@ def main():
                 device=device,
                 output_dir=output_dir,
                 encoder_types=encoder_types,
-                num_epochs=30,  # Reduced for faster comparison
+                num_epochs=50,  # Reduced for faster comparison
                 learning_rate=0.01
             )
             
