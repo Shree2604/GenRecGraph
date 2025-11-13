@@ -6,16 +6,16 @@ and generating visualizations and recommendations from learned embeddings.
 """
 
 import torch
+import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
-from typing import Dict, Tuple, List, Optional, Union
+from typing import Dict, Tuple, List, Optional, Union, Any
 from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import cosine_similarity
 import logging
 import time
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,39 +28,72 @@ __all__ = [
     'compare_encoders'
 ]
 
+class SimpleEncoder(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, dropout=0.1):
+        super(SimpleEncoder, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, output_dim)
+        )
+    
+    def forward(self, x, edge_index=None):
+        return self.encoder(x)
+
 def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn', 
-                   num_epochs: int = 100, learning_rate: float = 0.01) -> Tuple[torch.nn.Module, Dict]:
+                   num_epochs: int = 50, learning_rate: float = 0.01) -> Tuple[torch.nn.Module, Dict]:
     """
     Train the graph encoder model.
     
     Args:
         graph: The input graph
         device: Device to run the model on
-        encoder_type: Type of encoder to use ('gcn', 'gat', 'sage', 'hetero', 'bipartite')
+        encoder_type: Type of encoder to use ('gcn', 'gat', 'sage', 'simple')
         num_epochs: Number of training epochs
         learning_rate: Learning rate for optimizer
         
     Returns:
         Tuple of (trained_encoder, training_metrics)
     """
-    from models.encoders import create_encoder
-    
-    # Initialize encoder based on type
     input_dim = graph.num_node_features
     hidden_dim = 128
-    embedding_dim = 64
+    output_dim = 64
     
-    encoder = create_encoder(
-        encoder_type=encoder_type,
-        input_dim=input_dim,
-        embedding_dim=embedding_dim,
-        hidden_dims=[hidden_dim, embedding_dim],
-        dropout=0.1
-    ).to(device)
+    # Initialize the appropriate encoder
+    if encoder_type == 'simple':
+        encoder = SimpleEncoder(
+            input_dim=input_dim,
+            hidden_dim=hidden_dim,
+            output_dim=output_dim
+        ).to(device)
+    else:
+        try:
+            from models.encoders import create_encoder
+            encoder = create_encoder(
+                encoder_type=encoder_type,
+                input_dim=input_dim,
+                hidden_dims=[hidden_dim, output_dim],
+                output_dim=output_dim
+            ).to(device)
+        except (ImportError, AttributeError):
+            logger.warning(f"Could not import {encoder_type} encoder, falling back to simple encoder")
+            encoder = SimpleEncoder(
+                input_dim=input_dim,
+                hidden_dim=hidden_dim,
+                output_dim=output_dim
+            ).to(device)
     
     # Define optimizer and loss function
     optimizer = torch.optim.Adam(encoder.parameters(), lr=learning_rate)
     criterion = torch.nn.MSELoss()
+    
+    # Prepare data
+    x = graph.x.to(device)
+    if hasattr(graph, 'edge_index'):
+        edge_index = graph.edge_index.to(device)
+    else:
+        edge_index = None
     
     # Training loop
     metrics = {
@@ -75,11 +108,11 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
     x = graph.x.to(device)
     edge_index = graph.edge_index.to(device)
     
-    # Train/validation split (simple version - in practice, use proper k-fold)
-    num_edges = edge_index.size(1)
-    indices = torch.randperm(num_edges)
-    train_idx = indices[:int(0.8 * num_edges)]
-    val_idx = indices[int(0.8 * num_edges):]
+    # For simple encoder, we'll just do a node-wise split
+    num_nodes = x.size(0)
+    indices = torch.randperm(num_nodes)
+    train_idx = indices[:int(0.8 * num_nodes)]
+    val_idx = indices[int(0.8 * num_nodes):]
     
     start_time = time.time()
     
@@ -88,23 +121,13 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
         optimizer.zero_grad()
         
         # Forward pass
-        if encoder_type == 'hetero':
-            # For heterogeneous graph, we need to pass node types
-            # Assuming we have a way to separate user and movie nodes
-            # This is a simplified version - adjust based on your graph structure
-            x_dict = {
-                'user': x[graph.x[:, 0] == 1],  # Assuming first feature indicates user
-                'movie': x[graph.x[:, 0] == 0]   # and second indicates movie
-            }
-            # This needs to be adapted to your actual edge_index structure
-            embeddings = encoder(x_dict, graph.edge_index_dict)
-            # Calculate loss for each node type and average
-            loss = sum(criterion(emb, x_dict[ntype]) 
-                     for ntype, emb in embeddings.items()) / len(embeddings)
-        else:
-            # For homogeneous graphs
+        if edge_index is not None:
             embeddings = encoder(x, edge_index)
-            loss = criterion(embeddings, x)
+        else:
+            embeddings = encoder(x)
+            
+        # Calculate loss (only on training nodes)
+        loss = criterion(embeddings[train_idx], x[train_idx, :embeddings.size(1)])
         
         # Backward pass
         optimizer.zero_grad()
@@ -114,13 +137,11 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
         # Validation
         with torch.no_grad():
             encoder.eval()
-            if encoder_type == 'hetero':
-                val_embeddings = encoder(x_dict, graph.edge_index_dict)
-                val_loss = sum(criterion(emb, x_dict[ntype]) 
-                             for ntype, emb in val_embeddings.items()) / len(val_embeddings)
-            else:
+            if edge_index is not None:
                 val_embeddings = encoder(x, edge_index)
-                val_loss = criterion(val_embeddings, x)
+            else:
+                val_embeddings = encoder(x)
+            val_loss = criterion(val_embeddings[val_idx], x[val_idx, :val_embeddings.size(1)])
         
         metrics['train_losses'].append(loss.item())
         metrics['val_losses'].append(val_loss.item())
@@ -135,13 +156,10 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
     # Get final embeddings
     with torch.no_grad():
         encoder.eval()
-        if encoder_type == 'hetero':
-            final_embeddings = encoder(x_dict, graph.edge_index_dict)
-            # Combine embeddings from different node types
-            # This is a simplified version - adjust based on your needs
-            final_embeddings = torch.cat([e for e in final_embeddings.values()], dim=0)
-        else:
+        if edge_index is not None:
             final_embeddings = encoder(x, edge_index)
+        else:
+            final_embeddings = encoder(x)
     
     metrics.update({
         'embeddings': final_embeddings,
@@ -264,7 +282,7 @@ def save_recommendations(embeddings: Union[torch.Tensor, np.ndarray],
         print("\n".join(recommendations))
 
 def compare_encoders(graph, device: torch.device, output_dir: Path,
-                    encoder_types: list = ['gcn', 'gat', 'sage', 'bipartite'],
+                    encoder_types: list = ['simple', 'gcn', 'gat', 'sage'],
                     num_epochs: int = 30, learning_rate: float = 0.01) -> Dict[str, Any]:
     """
     Compare multiple encoder types and return their metrics.
@@ -280,7 +298,7 @@ def compare_encoders(graph, device: torch.device, output_dir: Path,
     Returns:
         Dictionary containing metrics for all encoders
     """
-    from . import train_encoder  # Import here to avoid circular imports
+    # Use the local train_encoder function directly
     
     all_metrics = {}
     
