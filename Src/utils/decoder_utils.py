@@ -223,7 +223,7 @@ def compare_decoders(
         # Create decoder
         decoder = create_decoder(
             decoder_type=decoder_type,
-            embedding_dim=encoder.embedding_dim,
+            embedding_dim=encoder.get_embedding_dim(),
             **kwargs.get('decoder_kwargs', {})
         ).to(device)
         
