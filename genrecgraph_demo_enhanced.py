@@ -217,13 +217,25 @@ def main():
     recommendations = app.get_recommendations(existing_user_id, k=5)
     
     print(f"\nTop 5 personalized recommendations for user {existing_user_id}:")
-    print("-" * 80)
+    print("-" * 120)
+    print(f"{'#':<4} {'Movie ID':<10} {'Title':<60} {'Year':<6} {'Genres':<30} {'Score':<8}")
+    print("-" * 120)
     for i, rec in enumerate(recommendations, 1):
         movie_id = rec.get('movie_id', 'N/A')
-        movie_title = rec.get('title', 'Title not available')
-        print(f"{i}. Movie ID: {movie_id}")
-        print(f"   Title: {movie_title}")
-        print(f"   Score: {rec['score']:.4f}")
+        title_year = rec.get('title', 'Title (Year)')
+        # Extract year from title if present (format: "Title (Year)")
+        if isinstance(title_year, str) and '(' in title_year and ')' in title_year:
+            movie_title = title_year.split('(')[0].strip()
+            year = title_year[title_year.find('(')+1:title_year.find(')')]
+        else:
+            movie_title = title_year
+            year = 'N/A'
+        
+        genres = rec.get('genres', 'Unknown')
+        if isinstance(genres, list):
+            genres = ', '.join(genres)
+        
+        print(f"{i:<4} {movie_id:<10} {movie_title[:55]:<60} {str(year):<6} {str(genres)[:25]:<30} {rec.get('score', 0):.4f}")
     
     # Example 2: Get recommendations for a new user (cold-start)
     print("\n" + "="*80)
@@ -239,13 +251,26 @@ def main():
     print(f"\nGenerating cold-start recommendations for new user: {new_user_id}")
     recommendations = app.get_recommendations(new_user_id, k=5)
     
-    print(f"\nTop 5 recommended movies for new user {new_user_id}:")
-    print("-" * 80)
+    print(f"\nTop 5 recommended movies for new user {new_user_id} (Cold Start):")
+    print("-" * 120)
+    print(f"{'#':<4} {'Movie ID':<10} {'Title':<60} {'Year':<6} {'Genres':<30}")
+    print("-" * 120)
     for i, rec in enumerate(recommendations, 1):
         movie_id = rec.get('movie_id', 'N/A')
-        movie_title = rec.get('title', 'Title not available')
-        print(f"{i}. Movie ID: {movie_id}")
-        print(f"   Title: {movie_title}")
+        title_year = rec.get('title', 'Title (Year)')
+        # Extract year from title if present (format: "Title (Year)")
+        if isinstance(title_year, str) and '(' in title_year and ')' in title_year:
+            movie_title = title_year.split('(')[0].strip()
+            year = title_year[title_year.find('(')+1:title_year.find(')')]
+        else:
+            movie_title = title_year
+            year = 'N/A'
+        
+        genres = rec.get('genres', 'Unknown')
+        if isinstance(genres, list):
+            genres = ', '.join(genres)
+        
+        print(f"{i:<4} {movie_id:<10} {movie_title[:55]:<60} {str(year):<6} {str(genres)[:25]}")
     
     print("\n" + "="*80)
     print("DEMO COMPLETED SUCCESSFULLY!")
