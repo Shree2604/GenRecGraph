@@ -58,31 +58,33 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
     """
     input_dim = graph.num_node_features
     hidden_dim = 128
-    output_dim = 64
+    # For autoencoder, output dim must match input dim
+    output_dim = input_dim
     
     # Initialize the appropriate encoder
-    if encoder_type == 'simple':
-        encoder = SimpleEncoder(
-            input_dim=input_dim,
-            hidden_dim=hidden_dim,
-            output_dim=output_dim
-        ).to(device)
-    else:
-        try:
-            from models.encoders import create_encoder
-            encoder = create_encoder(
-                encoder_type=encoder_type,
-                input_dim=input_dim,
-                hidden_dims=[hidden_dim, output_dim],
-                output_dim=output_dim
-            ).to(device)
-        except (ImportError, AttributeError):
-            logger.warning(f"Could not import {encoder_type} encoder, falling back to simple encoder")
+    try:
+        if encoder_type == 'simple':
             encoder = SimpleEncoder(
                 input_dim=input_dim,
                 hidden_dim=hidden_dim,
                 output_dim=output_dim
             ).to(device)
+        else:
+            from models.encoders import create_encoder
+            # For autoencoder, we need to ensure the final layer outputs the same dimension as input
+            encoder = create_encoder(
+                encoder_type=encoder_type,
+                input_dim=input_dim,
+                hidden_dims=[hidden_dim],  # Single hidden layer
+                output_dim=output_dim      # Match input dim for autoencoder
+            ).to(device)
+    except Exception as e:
+        logger.warning(f"Error initializing {encoder_type} encoder: {e}, falling back to simple encoder")
+        encoder = SimpleEncoder(
+            input_dim=input_dim,
+            hidden_dim=hidden_dim,
+            output_dim=output_dim
+        ).to(device)
     
     # Define optimizer and loss function
     optimizer = torch.optim.Adam(encoder.parameters(), lr=learning_rate)
@@ -127,7 +129,8 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
             embeddings = encoder(x)
             
         # Calculate loss (only on training nodes)
-        loss = criterion(embeddings[train_idx], x[train_idx, :embeddings.size(1)])
+        # Ensure we're comparing the same dimensionality
+        loss = criterion(embeddings[train_idx], x[train_idx])
         
         # Backward pass
         optimizer.zero_grad()
@@ -141,7 +144,7 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
                 val_embeddings = encoder(x, edge_index)
             else:
                 val_embeddings = encoder(x)
-            val_loss = criterion(val_embeddings[val_idx], x[val_idx, :val_embeddings.size(1)])
+            val_loss = criterion(val_embeddings[val_idx], x[val_idx])
         
         metrics['train_losses'].append(loss.item())
         metrics['val_losses'].append(val_loss.item())
