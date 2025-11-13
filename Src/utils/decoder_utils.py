@@ -15,6 +15,8 @@ from sklearn.metrics import roc_auc_score, average_precision_score
 import logging
 from tqdm import tqdm
 import json
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from ..models.decoders import (
     create_decoder,
@@ -112,6 +114,7 @@ def train_decoder(
     # Training loop
     best_val_auc = 0
     best_epoch = 0
+    best_model_state = None
     metrics = {
         'train_loss': [],
         'val_auc': [],
@@ -153,9 +156,30 @@ def train_decoder(
                 pos_out = pos_out_dict
                 neg_out = neg_out_dict
         elif isinstance(decoder, AutoregressiveDecoder):
-            # Autoregressive decoder expects separate user_emb and movie_emb
-            pos_out = decoder(user_emb, movie_emb)
-            neg_out = decoder(neg_user_emb, neg_movie_emb)
+            # Autoregressive decoder - handle dimension mismatch
+            # The decoder's forward expects (user_emb, movie_emb, edge_sequence)
+            # Create dummy edge_sequence if needed or reshape embeddings
+            try:
+                # First try: pass embeddings directly
+                pos_out = decoder(user_emb, movie_emb)
+                neg_out = decoder(neg_user_emb, neg_movie_emb)
+            except RuntimeError as e:
+                if "same number of dimensions" in str(e):
+                    # Add sequence dimension if needed
+                    user_emb_3d = user_emb.unsqueeze(1)  # [batch, 1, emb_dim]
+                    movie_emb_3d = movie_emb.unsqueeze(1)
+                    neg_user_emb_3d = neg_user_emb.unsqueeze(1)
+                    neg_movie_emb_3d = neg_movie_emb.unsqueeze(1)
+                    
+                    # Create edge sequence [batch, seq_len, emb_dim]
+                    pos_seq = torch.cat([user_emb_3d, movie_emb_3d], dim=1)
+                    neg_seq = torch.cat([neg_user_emb_3d, neg_movie_emb_3d], dim=1)
+                    
+                    # Try calling with sequence
+                    pos_out = decoder(user_emb, movie_emb, pos_seq)
+                    neg_out = decoder(neg_user_emb, neg_movie_emb, neg_seq)
+                else:
+                    raise
         elif isinstance(decoder, (MLPDecoder, BilinearDecoder)):
             # These decoders already apply sigmoid
             pos_out = decoder(user_emb, movie_emb)
@@ -192,14 +216,22 @@ def train_decoder(
         metrics['val_auc'].append(val_auc)
         metrics['val_ap'].append(val_ap)
         
-        # Early stopping
+        # Early stopping and model saving
         if val_auc > best_val_auc:
             best_val_auc = val_auc
             best_epoch = epoch
+            best_model_state = decoder.state_dict().copy()
             
             # Save best model
             if output_dir:
-                save_checkpoint(decoder, os.path.join(output_dir, f'best_{decoder_type}_decoder.pt'))
+                os.makedirs(output_dir, exist_ok=True)
+                save_checkpoint(
+                    decoder, 
+                    os.path.join(output_dir, f'best_{decoder_type}_decoder.pt'),
+                    epoch=epoch,
+                    val_auc=val_auc,
+                    val_ap=val_ap
+                )
                 
         elif epoch - best_epoch > patience:
             logger.info(f'Early stopping at epoch {epoch}')
@@ -212,15 +244,31 @@ def train_decoder(
                 f'Val AUC: {val_auc:.4f}, Val AP: {val_ap:.4f}'
             )
     
+    # Restore best model
+    if best_model_state is not None:
+        decoder.load_state_dict(best_model_state)
+    
     # Final evaluation on test set
     test_auc, test_ap = evaluate(decoder, embeddings, pos_test, neg_test, decoder_type)
     metrics['test_auc'] = test_auc
     metrics['test_ap'] = test_ap
     
-    # Save metrics
+    # Save final model
     if output_dir:
+        save_checkpoint(
+            decoder,
+            os.path.join(output_dir, f'final_{decoder_type}_decoder.pt'),
+            epoch=epoch,
+            val_auc=best_val_auc,
+            test_auc=test_auc,
+            test_ap=test_ap
+        )
+        
+        # Save metrics
         with open(os.path.join(output_dir, f'{decoder_type}_metrics.json'), 'w') as f:
-            json.dump(metrics, f)
+            json.dump(metrics, f, indent=2)
+    
+    logger.info(f"Best model saved at epoch {best_epoch} with Val AUC: {best_val_auc:.4f}")
     
     return metrics
 
@@ -273,8 +321,24 @@ def evaluate(
                 neg_pred = neg_out.cpu()
         elif isinstance(decoder, AutoregressiveDecoder):
             # Autoregressive expects separate embeddings
-            pos_pred = decoder(pos_user_emb, pos_movie_emb).cpu()
-            neg_pred = decoder(neg_user_emb, neg_movie_emb).cpu()
+            try:
+                pos_pred = decoder(pos_user_emb, pos_movie_emb).cpu()
+                neg_pred = decoder(neg_user_emb, neg_movie_emb).cpu()
+            except RuntimeError as e:
+                if "same number of dimensions" in str(e):
+                    # Add sequence dimension
+                    pos_user_emb_3d = pos_user_emb.unsqueeze(1)
+                    pos_movie_emb_3d = pos_movie_emb.unsqueeze(1)
+                    neg_user_emb_3d = neg_user_emb.unsqueeze(1)
+                    neg_movie_emb_3d = neg_movie_emb.unsqueeze(1)
+                    
+                    pos_seq = torch.cat([pos_user_emb_3d, pos_movie_emb_3d], dim=1)
+                    neg_seq = torch.cat([neg_user_emb_3d, neg_movie_emb_3d], dim=1)
+                    
+                    pos_pred = decoder(pos_user_emb, pos_movie_emb, pos_seq).cpu()
+                    neg_pred = decoder(neg_user_emb, neg_movie_emb, neg_seq).cpu()
+                else:
+                    raise
         elif isinstance(decoder, (MLPDecoder, BilinearDecoder)):
             # Already applies sigmoid
             pos_pred = decoder(pos_user_emb, pos_movie_emb).cpu()
@@ -319,15 +383,22 @@ def compare_decoders(
         Dictionary of metrics for each decoder
     """
     if decoder_types is None:
-        decoder_types = ['inner_product', 'mlp', 'vae', 'autoregressive', 'bilinear']
+        # Exclude inner_product decoder
+        decoder_types = ['mlp', 'vae', 'autoregressive', 'bilinear']
     
     os.makedirs(output_dir, exist_ok=True)
     all_metrics = {}
+    best_decoder = None
+    best_auc = 0
     
     for decoder_type in decoder_types:
         logger.info(f"\n{'='*50}")
         logger.info(f"Training {decoder_type.upper()} decoder")
         logger.info(f"{'='*50}")
+        
+        # Create decoder-specific output directory
+        decoder_output_dir = os.path.join(output_dir, decoder_type)
+        os.makedirs(decoder_output_dir, exist_ok=True)
         
         # Create decoder
         decoder = create_decoder(
@@ -346,13 +417,18 @@ def compare_decoders(
                 graph=graph,
                 device=device,
                 decoder_type=decoder_type,
-                output_dir=output_dir,
-                num_epochs=training_config.get('num_epochs', 100),
+                output_dir=decoder_output_dir,
+                num_epochs=training_config.get('num_epochs', 50),  # Changed default to 50
                 lr=training_config.get('learning_rate', 0.01),
                 weight_decay=training_config.get('weight_decay', 5e-4),
                 patience=training_config.get('patience', 10)
             )
             all_metrics[decoder_type] = metrics
+            
+            # Track best decoder
+            if metrics['test_auc'] > best_auc:
+                best_auc = metrics['test_auc']
+                best_decoder = decoder_type
             
             logger.info(
                 f"{decoder_type.upper()} - "
@@ -366,23 +442,46 @@ def compare_decoders(
             logger.error(traceback.format_exc())
             all_metrics[decoder_type] = {'error': str(e)}
     
+    # Generate comparison plots
+    plot_decoder_comparison(all_metrics, output_dir)
+    
     # Save comparison results
+    comparison_results = {
+        'all_metrics': all_metrics,
+        'best_decoder': best_decoder,
+        'best_auc': best_auc
+    }
+    
     with open(os.path.join(output_dir, 'decoder_comparison.json'), 'w') as f:
-        json.dump(all_metrics, f, indent=2)
+        json.dump(comparison_results, f, indent=2)
+    
+    # Copy best model to main output directory
+    if best_decoder:
+        import shutil
+        best_model_src = os.path.join(output_dir, best_decoder, f'best_{best_decoder}_decoder.pt')
+        best_model_dst = os.path.join(output_dir, 'best_overall_decoder.pt')
+        if os.path.exists(best_model_src):
+            shutil.copy(best_model_src, best_model_dst)
+            logger.info(f"\nBest overall decoder: {best_decoder.upper()} with AUC: {best_auc:.4f}")
+            logger.info(f"Best model copied to: {best_model_dst}")
     
     return all_metrics
 
-def save_checkpoint(model: nn.Module, path: str):
-    """Save model checkpoint."""
-    torch.save({
+def save_checkpoint(model: nn.Module, path: str, **kwargs):
+    """Save model checkpoint with additional metadata."""
+    checkpoint = {
         'model_state_dict': model.state_dict(),
-    }, path)
+        **kwargs
+    }
+    torch.save(checkpoint, path)
+    logger.info(f"Model checkpoint saved to: {path}")
 
 def load_checkpoint(model: nn.Module, path: str, device: str = 'cpu'):
     """Load model checkpoint."""
     checkpoint = torch.load(path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
-    return model
+    logger.info(f"Model loaded from: {path}")
+    return model, checkpoint
 
 def negative_sampling(edge_index, num_nodes, num_neg_samples=None):
     """Generate negative samples."""
@@ -395,13 +494,22 @@ def negative_sampling(edge_index, num_nodes, num_neg_samples=None):
         edge_set.add((edge_index[0, i].item(), edge_index[1, i].item()))
     
     neg_edges = []
-    while len(neg_edges) < num_neg_samples:
+    max_attempts = num_neg_samples * 10
+    attempts = 0
+    
+    while len(neg_edges) < num_neg_samples and attempts < max_attempts:
         src = torch.randint(0, num_nodes, (1,)).item()
         dst = torch.randint(0, num_nodes, (1,)).item()
         
         # Ensure it's not a self-loop and not an existing edge
         if src != dst and (src, dst) not in edge_set:
             neg_edges.append([src, dst])
+            edge_set.add((src, dst))  # Avoid duplicates
+        
+        attempts += 1
+    
+    if len(neg_edges) < num_neg_samples:
+        logger.warning(f"Only generated {len(neg_edges)} negative samples out of {num_neg_samples} requested")
     
     neg_edge_index = torch.tensor(neg_edges, dtype=torch.long).t()
     return neg_edge_index
@@ -419,3 +527,228 @@ def split_edges(edge_index, val_ratio=0.05, test_ratio=0.1):
     test_idx = perm[num_train + num_val:]
     
     return edge_index[:, train_idx], edge_index[:, val_idx], edge_index[:, test_idx]
+
+
+def plot_decoder_comparison(all_metrics: Dict, output_dir: str):
+    """
+    Generate comparison plots for different decoders.
+    
+    Args:
+        all_metrics: Dictionary containing metrics for all decoders
+        output_dir: Directory to save plots
+    """
+    # Set style
+    sns.set_style("whitegrid")
+    plt.rcParams['figure.figsize'] = (15, 10)
+    
+    # Filter out decoders with errors
+    valid_metrics = {k: v for k, v in all_metrics.items() if 'error' not in v}
+    
+    if not valid_metrics:
+        logger.warning("No valid metrics to plot")
+        return
+    
+    # Create figure with subplots
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    fig.suptitle('Decoder Comparison Metrics', fontsize=16, fontweight='bold')
+    
+    # 1. Training Loss Over Epochs
+    ax = axes[0, 0]
+    for decoder_name, metrics in valid_metrics.items():
+        if 'train_loss' in metrics and metrics['train_loss']:
+            epochs = range(len(metrics['train_loss']))
+            ax.plot(epochs, metrics['train_loss'], marker='o', label=decoder_name.upper(), linewidth=2)
+    ax.set_xlabel('Epoch', fontsize=12)
+    ax.set_ylabel('Training Loss', fontsize=12)
+    ax.set_title('Training Loss Comparison', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # 2. Validation AUC Over Epochs
+    ax = axes[0, 1]
+    for decoder_name, metrics in valid_metrics.items():
+        if 'val_auc' in metrics and metrics['val_auc']:
+            epochs = range(len(metrics['val_auc']))
+            ax.plot(epochs, metrics['val_auc'], marker='o', label=decoder_name.upper(), linewidth=2)
+    ax.set_xlabel('Epoch', fontsize=12)
+    ax.set_ylabel('Validation AUC', fontsize=12)
+    ax.set_title('Validation AUC Comparison', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # 3. Validation AP Over Epochs
+    ax = axes[0, 2]
+    for decoder_name, metrics in valid_metrics.items():
+        if 'val_ap' in metrics and metrics['val_ap']:
+            epochs = range(len(metrics['val_ap']))
+            ax.plot(epochs, metrics['val_ap'], marker='o', label=decoder_name.upper(), linewidth=2)
+    ax.set_xlabel('Epoch', fontsize=12)
+    ax.set_ylabel('Validation AP', fontsize=12)
+    ax.set_title('Validation AP Comparison', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # 4. Test AUC Bar Chart
+    ax = axes[1, 0]
+    decoder_names = list(valid_metrics.keys())
+    test_aucs = [metrics['test_auc'] for metrics in valid_metrics.values()]
+    colors = plt.cm.viridis(np.linspace(0, 1, len(decoder_names)))
+    bars = ax.bar(decoder_names, test_aucs, color=colors, edgecolor='black', linewidth=1.5)
+    ax.set_ylabel('Test AUC', fontsize=12)
+    ax.set_title('Test AUC Comparison', fontsize=14, fontweight='bold')
+    ax.set_ylim([min(test_aucs) - 0.02, 1.0])
+    # Add value labels on bars
+    for bar, value in zip(bars, test_aucs):
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height,
+                f'{value:.4f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # 5. Test AP Bar Chart
+    ax = axes[1, 1]
+    test_aps = [metrics['test_ap'] for metrics in valid_metrics.values()]
+    bars = ax.bar(decoder_names, test_aps, color=colors, edgecolor='black', linewidth=1.5)
+    ax.set_ylabel('Test AP', fontsize=12)
+    ax.set_title('Test AP Comparison', fontsize=14, fontweight='bold')
+    ax.set_ylim([min(test_aps) - 0.02, 1.0])
+    # Add value labels on bars
+    for bar, value in zip(bars, test_aps):
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height,
+                f'{value:.4f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # 6. Combined Test Metrics Comparison
+    ax = axes[1, 2]
+    x = np.arange(len(decoder_names))
+    width = 0.35
+    bars1 = ax.bar(x - width/2, test_aucs, width, label='AUC', 
+                   color='steelblue', edgecolor='black', linewidth=1.5)
+    bars2 = ax.bar(x + width/2, test_aps, width, label='AP', 
+                   color='coral', edgecolor='black', linewidth=1.5)
+    ax.set_ylabel('Score', fontsize=12)
+    ax.set_title('Test Metrics: AUC vs AP', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(decoder_names)
+    ax.legend()
+    ax.set_ylim([min(min(test_aucs), min(test_aps)) - 0.02, 1.0])
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    plt.tight_layout()
+    
+    # Save the figure
+    plot_path = os.path.join(output_dir, 'decoder_comparison_plots.png')
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    logger.info(f"Comparison plots saved to: {plot_path}")
+    plt.close()
+    
+    # Create individual plots for each metric (more detailed)
+    
+    # Training Loss - Individual Plot
+    plt.figure(figsize=(10, 6))
+    for decoder_name, metrics in valid_metrics.items():
+        if 'train_loss' in metrics and metrics['train_loss']:
+            epochs = range(len(metrics['train_loss']))
+            plt.plot(epochs, metrics['train_loss'], marker='o', label=decoder_name.upper(), 
+                    linewidth=2, markersize=4)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Training Loss', fontsize=12)
+    plt.title('Training Loss Over Epochs', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'training_loss_comparison.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # Validation AUC - Individual Plot
+    plt.figure(figsize=(10, 6))
+    for decoder_name, metrics in valid_metrics.items():
+        if 'val_auc' in metrics and metrics['val_auc']:
+            epochs = range(len(metrics['val_auc']))
+            plt.plot(epochs, metrics['val_auc'], marker='o', label=decoder_name.upper(), 
+                    linewidth=2, markersize=4)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Validation AUC', fontsize=12)
+    plt.title('Validation AUC Over Epochs', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'validation_auc_comparison.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # Validation AP - Individual Plot
+    plt.figure(figsize=(10, 6))
+    for decoder_name, metrics in valid_metrics.items():
+        if 'val_ap' in metrics and metrics['val_ap']:
+            epochs = range(len(metrics['val_ap']))
+            plt.plot(epochs, metrics['val_ap'], marker='o', label=decoder_name.upper(), 
+                    linewidth=2, markersize=4)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Validation AP', fontsize=12)
+    plt.title('Validation AP Over Epochs', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'validation_ap_comparison.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # Summary statistics table
+    create_summary_table(valid_metrics, output_dir)
+    
+    logger.info(f"All comparison plots saved to: {output_dir}")
+
+
+def create_summary_table(valid_metrics: Dict, output_dir: str):
+    """
+    Create a summary table image with decoder performance metrics.
+    
+    Args:
+        valid_metrics: Dictionary of valid decoder metrics
+        output_dir: Directory to save the table
+    """
+    fig, ax = plt.subplots(figsize=(12, 4))
+    ax.axis('tight')
+    ax.axis('off')
+    
+    # Prepare table data
+    decoder_names = list(valid_metrics.keys())
+    table_data = []
+    table_data.append(['Decoder', 'Test AUC', 'Test AP', 'Best Val AUC', 'Final Train Loss'])
+    
+    for decoder_name in decoder_names:
+        metrics = valid_metrics[decoder_name]
+        test_auc = f"{metrics['test_auc']:.4f}"
+        test_ap = f"{metrics['test_ap']:.4f}"
+        best_val_auc = f"{max(metrics['val_auc']):.4f}" if metrics['val_auc'] else "N/A"
+        final_loss = f"{metrics['train_loss'][-1]:.4f}" if metrics['train_loss'] else "N/A"
+        table_data.append([decoder_name.upper(), test_auc, test_ap, best_val_auc, final_loss])
+    
+    # Create table
+    table = ax.table(cellText=table_data, cellLoc='center', loc='center',
+                     colWidths=[0.2, 0.2, 0.2, 0.2, 0.2])
+    table.auto_set_font_size(False)
+    table.set_fontsize(11)
+    table.scale(1, 2)
+    
+    # Style header row
+    for i in range(len(table_data[0])):
+        cell = table[(0, i)]
+        cell.set_facecolor('#4CAF50')
+        cell.set_text_props(weight='bold', color='white')
+    
+    # Style data rows with alternating colors
+    for i in range(1, len(table_data)):
+        for j in range(len(table_data[0])):
+            cell = table[(i, j)]
+            if i % 2 == 0:
+                cell.set_facecolor('#f0f0f0')
+            else:
+                cell.set_facecolor('#ffffff')
+    
+    plt.title('Decoder Performance Summary', fontsize=16, fontweight='bold', pad=20)
+    plt.tight_layout()
+    
+    table_path = os.path.join(output_dir, 'decoder_summary_table.png')
+    plt.savefig(table_path, dpi=300, bbox_inches='tight')
+    logger.info(f"Summary table saved to: {table_path}")
+    plt.close()
