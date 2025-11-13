@@ -211,7 +211,8 @@ def main():
     
     print(f"\nTop 5 recommendations for user {existing_user_id}:")
     for i, rec in enumerate(recommendations, 1):
-        print(f"{i}. {rec.get('title', f'Movie {rec["movie_id"]}')} (Score: {rec['score']:.4f})")
+        movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
+    print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
     
     # Example 2: Get recommendations for a new user (cold-start)
     print("\n" + "="*70)
@@ -222,7 +223,8 @@ def main():
     
     print(f"\nTop 5 recommendations for new user {new_user_id} (cold-start):")
     for i, rec in enumerate(recommendations, 1):
-        print(f"{i}. {rec.get('title', f'Movie {rec["movie_id"]}')} (Score: {rec['score']:.4f})")
+        movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
+    print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
     
     # Example 3: Predict ratings for specific user-movie pairs
     print("\n" + "="*70)
