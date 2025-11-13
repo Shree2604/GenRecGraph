@@ -30,7 +30,7 @@ CONFIG = {
     },
     'decoder': {
         'type': 'mlp',             # Using the best performing decoder
-        'hidden_dims': [128, 64],  # Match your trained decoder architecture
+        'hidden_dims': [64, 32],   # Updated to match the trained model architecture
         'dropout': 0.1
     },
     'model_paths': {
