@@ -138,19 +138,27 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
         if edge_index is not None:
             if encoder_type == 'bipartite':
                 # For bipartite, we need to handle the node types separately
-                node_types = graph.node_type  # Assuming graph has node_type attribute
-                user_mask = node_types == 'user'  # Adjust based on your node type attribute
+                num_users = getattr(graph, 'num_users', x.size(0) // 2)  # Default to half if not specified
+                
+                # Create masks for users and movies
+                user_mask = torch.zeros(x.size(0), dtype=torch.bool, device=x.device)
+                user_mask[:num_users] = True
                 movie_mask = ~user_mask
                 
-                # Get embeddings for each node type
-                user_emb = encoder(x[user_mask], edge_index[:, edge_index[1] < user_mask.sum()])
-                movie_emb = encoder(x[movie_mask], edge_index[:, edge_index[1] >= user_mask.sum()] - user_mask.sum())
-                
-                # Combine embeddings
-                combined_emb = torch.zeros_like(x)
-                combined_emb[user_mask] = user_emb
-                combined_emb[movie_mask] = movie_emb
-                embeddings = combined_emb
+                try:
+                    # Get embeddings for each node type
+                    user_emb = encoder(x[user_mask], edge_index[:, edge_index[1] < user_mask.sum()])
+                    movie_emb = encoder(x[movie_mask], edge_index[:, edge_index[1] >= user_mask.sum()] - user_mask.sum())
+                    
+                    # Combine embeddings
+                    combined_emb = torch.zeros_like(x)
+                    combined_emb[user_mask] = user_emb
+                    combined_emb[movie_mask] = movie_emb
+                    embeddings = combined_emb
+                except Exception as e:
+                    logger.error(f"Error in bipartite encoder: {e}")
+                    # Fall back to simple encoder behavior if bipartite fails
+                    embeddings = encoder(x, edge_index)
             else:
                 embeddings = encoder(x, edge_index)
         else:
