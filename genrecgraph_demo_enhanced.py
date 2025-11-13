@@ -196,8 +196,24 @@ class DemoApp:
                 for uid, mid in zip(user_ids, movie_ids)
             ]
 
+def load_movie_names(csv_path):
+    """Load movie names from CSV file into a dictionary."""
+    import pandas as pd
+    try:
+        # Read the CSV file
+        movies_df = pd.read_csv(csv_path)
+        # Create a dictionary with movieId as key and title as value
+        return dict(zip(movies_df['movieId'], movies_df['title']))
+    except Exception as e:
+        logger.error(f"Error loading movie names: {e}")
+        return {}
+
 def main():
     """Run the demo application."""
+    # Load movie names from CSV
+    MOVIES_CSV_PATH = r"D:\Shree\GenRecGraph\Data\movies.csv"
+    movie_names = load_movie_names(MOVIES_CSV_PATH)
+    
     # Initialize the demo app
     try:
         app = DemoApp(CONFIG)
@@ -217,25 +233,17 @@ def main():
     recommendations = app.get_recommendations(existing_user_id, k=5)
     
     print(f"\nTop 5 personalized recommendations for user {existing_user_id}:")
-    print("-" * 120)
-    print(f"{'#':<4} {'Movie ID':<10} {'Title':<60} {'Year':<6} {'Genres':<30} {'Score':<8}")
-    print("-" * 120)
+    print("-" * 100)
+    print(f"{'#':<4} {'Movie ID':<10} {'Title':<80} {'Score':<8}")
+    print("-" * 100)
     for i, rec in enumerate(recommendations, 1):
         movie_id = rec.get('movie_id', 'N/A')
-        title_year = rec.get('title', 'Title (Year)')
-        # Extract year from title if present (format: "Title (Year)")
-        if isinstance(title_year, str) and '(' in title_year and ')' in title_year:
-            movie_title = title_year.split('(')[0].strip()
-            year = title_year[title_year.find('(')+1:title_year.find(')')]
-        else:
-            movie_title = title_year
-            year = 'N/A'
-        
-        genres = rec.get('genres', 'Unknown')
-        if isinstance(genres, list):
-            genres = ', '.join(genres)
-        
-        print(f"{i:<4} {movie_id:<10} {movie_title[:55]:<60} {str(year):<6} {str(genres)[:25]:<30} {rec.get('score', 0):.4f}")
+        # Get movie title from our loaded dictionary, fallback to rec['title'] if not found
+        movie_title = movie_names.get(movie_id, rec.get('title', 'Title not available'))
+        # Clean up title if it contains year in parentheses
+        if isinstance(movie_title, str) and '(' in movie_title:
+            movie_title = movie_title.split('(')[0].strip()
+        print(f"{i:<4} {str(movie_id):<10} {movie_title[:75]:<80} {rec.get('score', 0):.4f}")
     
     # Example 2: Get recommendations for a new user (cold-start)
     print("\n" + "="*80)
@@ -252,25 +260,17 @@ def main():
     recommendations = app.get_recommendations(new_user_id, k=5)
     
     print(f"\nTop 5 recommended movies for new user {new_user_id} (Cold Start):")
-    print("-" * 120)
-    print(f"{'#':<4} {'Movie ID':<10} {'Title':<60} {'Year':<6} {'Genres':<30}")
-    print("-" * 120)
+    print("-" * 100)
+    print(f"{'#':<4} {'Movie ID':<10} {'Title':<80}")
+    print("-" * 100)
     for i, rec in enumerate(recommendations, 1):
         movie_id = rec.get('movie_id', 'N/A')
-        title_year = rec.get('title', 'Title (Year)')
-        # Extract year from title if present (format: "Title (Year)")
-        if isinstance(title_year, str) and '(' in title_year and ')' in title_year:
-            movie_title = title_year.split('(')[0].strip()
-            year = title_year[title_year.find('(')+1:title_year.find(')')]
-        else:
-            movie_title = title_year
-            year = 'N/A'
-        
-        genres = rec.get('genres', 'Unknown')
-        if isinstance(genres, list):
-            genres = ', '.join(genres)
-        
-        print(f"{i:<4} {movie_id:<10} {movie_title[:55]:<60} {str(year):<6} {str(genres)[:25]}")
+        # Get movie title from our loaded dictionary, fallback to rec['title'] if not found
+        movie_title = movie_names.get(movie_id, rec.get('title', 'Title not available'))
+        # Clean up title if it contains year in parentheses
+        if isinstance(movie_title, str) and '(' in movie_title:
+            movie_title = movie_title.split('(')[0].strip()
+        print(f"{i:<4} {str(movie_id):<10} {movie_title[:75]}")
     
     print("\n" + "="*80)
     print("DEMO COMPLETED SUCCESSFULLY!")
