@@ -229,6 +229,8 @@ def compare_decoders(
         
         # Train decoder
         try:
+            # Extract training parameters from kwargs
+            training_config = kwargs.get('training_config', {})
             metrics = train_decoder(
                 encoder=encoder,
                 decoder=decoder,
@@ -236,7 +238,10 @@ def compare_decoders(
                 device=device,
                 decoder_type=decoder_type,
                 output_dir=output_dir,
-                **kwargs
+                num_epochs=training_config.get('num_epochs', 100),
+                lr=training_config.get('learning_rate', 0.01),
+                weight_decay=training_config.get('weight_decay', 5e-4),
+                patience=training_config.get('patience', 10)
             )
             all_metrics[decoder_type] = metrics
             
