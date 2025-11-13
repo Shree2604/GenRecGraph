@@ -165,7 +165,8 @@ def main():
         # Compare all encoder types and select the best one
         logger.info("Comparing different encoder types...")
         try:
-            encoder_types = ['gcn', 'gat', 'sage', 'bipartite']
+            # Using only stable encoders - removed 'gcn' and 'bipartite' due to CUDA errors
+            encoder_types = ['gcn' ,'gat', 'sage']
             
             # Compare all encoders
             all_metrics = compare_encoders(
