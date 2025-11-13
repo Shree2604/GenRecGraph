@@ -15,8 +15,18 @@ from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import cosine_similarity
 import logging
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    'train_encoder',
+    'visualize_embeddings',
+    'save_metrics',
+    'save_recommendations',
+    'save_encoder_checkpoint',
+    'compare_encoders'
+]
 
 def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn', 
                    num_epochs: int = 100, learning_rate: float = 0.01) -> Tuple[torch.nn.Module, Dict]:
@@ -252,6 +262,121 @@ def save_recommendations(embeddings: Union[torch.Tensor, np.ndarray],
             f.write("\n".join(recommendations))
     else:
         print("\n".join(recommendations))
+
+def compare_encoders(graph, device: torch.device, output_dir: Path,
+                    encoder_types: list = ['gcn', 'gat', 'sage', 'bipartite'],
+                    num_epochs: int = 30, learning_rate: float = 0.01) -> Dict[str, Any]:
+    """
+    Compare multiple encoder types and return their metrics.
+    
+    Args:
+        graph: Input graph
+        device: Device to run the models on
+        output_dir: Directory to save results
+        encoder_types: List of encoder types to compare
+        num_epochs: Number of training epochs per encoder
+        learning_rate: Learning rate for optimizer
+        
+    Returns:
+        Dictionary containing metrics for all encoders
+    """
+    from . import train_encoder  # Import here to avoid circular imports
+    
+    all_metrics = {}
+    
+    for encoder_type in encoder_types:
+        logger.info(f"\n{'='*50}")
+        logger.info(f"Training {encoder_type.upper()} encoder")
+        logger.info(f"{'='*50}")
+        
+        try:
+            # Create encoder-specific output directory
+            encoder_output_dir = output_dir / encoder_type
+            encoder_output_dir.mkdir(exist_ok=True, parents=True)
+            
+            # Train the encoder
+            encoder, metrics = train_encoder(
+                graph=graph,
+                device=device,
+                encoder_type=encoder_type,
+                num_epochs=num_epochs,
+                learning_rate=learning_rate
+            )
+            
+            # Save the encoder checkpoint
+            save_encoder_checkpoint(encoder, metrics, encoder_output_dir)
+            
+            # Save embeddings
+            embeddings = metrics['embeddings']
+            torch.save(embeddings, encoder_output_dir / 'node_embeddings.pt')
+            np.save(encoder_output_dir / 'node_embeddings.npy', embeddings.cpu().numpy())
+            
+            # Generate and save visualizations
+            visualize_embeddings(
+                embeddings=embeddings,
+                output_dir=encoder_output_dir,
+                encoder_type=encoder_type
+            )
+            
+            # Save metrics
+            save_metrics(metrics, encoder_output_dir)
+            
+            # Generate example recommendations
+            save_recommendations(
+                embeddings=embeddings,
+                output_dir=encoder_output_dir,
+                encoder_type=encoder_type
+            )
+            
+            all_metrics[encoder_type] = metrics
+            
+        except Exception as e:
+            logger.error(f"Error with {encoder_type} encoder: {e}", exc_info=True)
+    
+    # Generate comparison report
+    generate_comparison_report(all_metrics, output_dir)
+    
+    return all_metrics
+
+def generate_comparison_report(metrics_dict: Dict[str, Any], output_dir: Path) -> None:
+    """Generate a comparison report of all encoders."""
+    report_path = output_dir / 'encoder_comparison.txt'
+    
+    with open(report_path, 'w') as f:
+        f.write("ENCODER COMPARISON REPORT\n")
+        f.write("="*50 + "\n\n")
+        
+        # Sort encoders by validation loss (ascending)
+        sorted_encoders = sorted(
+            metrics_dict.items(),
+            key=lambda x: x[1]['val_losses'][-1] if 'val_losses' in x[1] else float('inf')
+        )
+        
+        # Write summary table
+        f.write("Summary:\n")
+        f.write(f"{'Encoder':<15} {'Params':<15} {'Train Loss':<15} {'Val Loss':<15} {'Time (s)':<15}\n")
+        f.write("-"*70 + "\n")
+        
+        for encoder_type, metrics in sorted_encoders:
+            f.write(f"{encoder_type:<15} {metrics.get('num_parameters', 'N/A'):<15} "
+                   f"{metrics['train_losses'][-1]:<15.6f} {metrics['val_losses'][-1]:<15.6f} "
+                   f"{metrics.get('training_time', 'N/A'):<15.2f}\n")
+        
+        # Add detailed metrics for each encoder
+        f.write("\n" + "="*50 + "\n")
+        f.write("DETAILED METRICS\n")
+        f.write("="*50 + "\n\n")
+        
+        for encoder_type, metrics in metrics_dict.items():
+            f.write(f"{encoder_type.upper()} ENCODER\n")
+            f.write("-"*50 + "\n")
+            f.write(f"Number of parameters: {metrics.get('num_parameters', 'N/A')}\n")
+            f.write(f"Final training loss: {metrics['train_losses'][-1]:.6f}\n")
+            f.write(f"Final validation loss: {metrics['val_losses'][-1]:.6f}\n")
+            f.write(f"Training time: {metrics.get('training_time', 'N/A'):.2f} seconds\n\n")
+    
+    logger.info(f"Generated encoder comparison report at {report_path}")
+
 
 def save_encoder_checkpoint(encoder: torch.nn.Module, 
                              metrics: Dict, 
