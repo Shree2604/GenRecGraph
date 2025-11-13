@@ -60,15 +60,27 @@ def train_decoder(
     encoder.eval()
     decoder.train()
     
+    # Handle both PyG Data objects and dictionaries
+    if isinstance(graph, dict):
+        # Convert dictionary to PyG Data object
+        from torch_geometric.data import Data
+        data = Data(
+            x=graph['x'],
+            edge_index=graph['edge_index'],
+            num_nodes=graph.get('num_nodes', graph['x'].size(0))
+        )
+    else:
+        data = graph
+    
     # Get node embeddings
     with torch.no_grad():
-        embeddings = encoder(graph.x.to(device), graph.edge_index.to(device))
+        embeddings = encoder(data.x.to(device), data.edge_index.to(device))
     
     # Prepare data
-    pos_edge_index = graph.edge_index
+    pos_edge_index = data.edge_index
     neg_edge_index = negative_sampling(
         edge_index=pos_edge_index,
-        num_nodes=graph.num_nodes,
+        num_nodes=data.num_nodes,
         num_neg_samples=pos_edge_index.size(1)
     )
     
