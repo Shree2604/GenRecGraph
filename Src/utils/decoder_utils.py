@@ -33,7 +33,7 @@ def train_decoder(
     graph: Data,
     device: torch.device,
     decoder_type: str,
-    num_epochs: int = 100,
+    num_epochs: int = 50,
     lr: float = 0.01,
     weight_decay: float = 5e-4,
     patience: int = 10,
@@ -292,7 +292,7 @@ def compare_decoders(
         Dictionary of metrics for each decoder
     """
     if decoder_types is None:
-        decoder_types = ['inner_product', 'mlp', 'vae', 'autoregressive', 'bilinear']
+        decoder_types = ['mlp', 'vae', 'autoregressive', 'bilinear']
     
     os.makedirs(output_dir, exist_ok=True)
     all_metrics = {}
@@ -320,7 +320,7 @@ def compare_decoders(
                 device=device,
                 decoder_type=decoder_type,
                 output_dir=output_dir,
-                num_epochs=training_config.get('num_epochs', 100),
+                num_epochs=training_config.get('num_epochs', 50),
                 lr=training_config.get('learning_rate', 0.01),
                 weight_decay=training_config.get('weight_decay', 5e-4),
                 patience=training_config.get('patience', 10)
