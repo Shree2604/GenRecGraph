@@ -111,8 +111,8 @@ def main():
                 'path': 'D:/Shree/GenRecGraph/output/sage/encoder_checkpoint.pt',  # Your pre-trained encoder
                 'type': 'sage',
                 'input_dim': 21,  # Should match your feature dimension
-                'hidden_dims': [64, 64],
-                'output_dim': 64,
+                'hidden_dims': [128, 21],  # Updated to match pre-trained model
+                'output_dim': 21,  # Updated to match pre-trained model
                 'dropout': 0.1
             },
             'decoder': {
