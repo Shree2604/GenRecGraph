@@ -111,9 +111,17 @@ def train_decoder(
         decoder.train()
         optimizer.zero_grad()
         
-        # Forward pass
-        pos_out = decoder(embeddings, pos_train, sigmoid=True)
-        neg_out = decoder(embeddings, neg_train, sigmoid=True)
+        # Forward pass - handle different decoder types
+        if isinstance(decoder, (GraphVAEDecoder, MLPDecoder, BilinearDecoder, AutoregressiveDecoder)):
+            # These decoders already apply sigmoid in their forward pass
+            pos_out = decoder(embeddings, pos_train)
+            neg_out = decoder(embeddings, neg_train)
+        else:
+            # Fallback for other decoders
+            pos_out = decoder(embeddings, pos_train)
+            neg_out = decoder(embeddings, neg_train)
+            pos_out = torch.sigmoid(pos_out)
+            neg_out = torch.sigmoid(neg_out)
         
         # Loss
         pos_loss = criterion(pos_out, torch.ones_like(pos_out))
@@ -184,8 +192,13 @@ def evaluate(
     """
     decoder.eval()
     with torch.no_grad():
-        pos_pred = decoder(embeddings, pos_edge_index, sigmoid=True).cpu()
-        neg_pred = decoder(embeddings, neg_edge_index, sigmoid=True).cpu()
+        # Handle different decoder types in evaluation
+        if isinstance(decoder, (GraphVAEDecoder, MLPDecoder, BilinearDecoder, AutoregressiveDecoder)):
+            pos_pred = decoder(embeddings, pos_edge_index).cpu()
+            neg_pred = decoder(embeddings, neg_edge_index).cpu()
+        else:
+            pos_pred = torch.sigmoid(decoder(embeddings, pos_edge_index)).cpu()
+            neg_pred = torch.sigmoid(decoder(embeddings, neg_edge_index)).cpu()
         
         y_true = torch.cat([
             torch.ones(pos_pred.size(0)),
