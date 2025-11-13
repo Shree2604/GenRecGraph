@@ -71,12 +71,13 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
             ).to(device)
         else:
             from models.encoders import create_encoder
-            # For autoencoder, we need to ensure the final layer outputs the same dimension as input
+                    # For autoencoder, we need to ensure the final layer outputs the same dimension as input
+            # Add an additional layer to project back to input dimension
             encoder = create_encoder(
                 encoder_type=encoder_type,
                 input_dim=input_dim,
-                hidden_dims=[hidden_dim],  # Single hidden layer
-                output_dim=output_dim      # Match input dim for autoencoder
+                hidden_dims=[hidden_dim, output_dim],  # Project back to input dim
+                output_dim=output_dim
             ).to(device)
     except Exception as e:
         logger.warning(f"Error initializing {encoder_type} encoder: {e}, falling back to simple encoder")
@@ -96,6 +97,17 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
         edge_index = graph.edge_index.to(device)
     else:
         edge_index = None
+        
+    # Ensure we have a valid train/validation split
+    num_nodes = x.size(0)
+    indices = torch.randperm(num_nodes)
+    train_size = int(0.8 * num_nodes)
+    train_idx = indices[:train_size]
+    val_idx = indices[train_size:]
+    
+    # Ensure we have enough nodes for the split
+    if len(train_idx) == 0 or len(val_idx) == 0:
+        raise ValueError("Not enough nodes for train/validation split")
     
     # Training loop
     metrics = {
@@ -124,12 +136,33 @@ def train_encoder(graph, device: torch.device, encoder_type: str = 'gcn',
         
         # Forward pass
         if edge_index is not None:
-            embeddings = encoder(x, edge_index)
+            if encoder_type == 'bipartite':
+                # For bipartite, we need to handle the node types separately
+                node_types = graph.node_type  # Assuming graph has node_type attribute
+                user_mask = node_types == 'user'  # Adjust based on your node type attribute
+                movie_mask = ~user_mask
+                
+                # Get embeddings for each node type
+                user_emb = encoder(x[user_mask], edge_index[:, edge_index[1] < user_mask.sum()])
+                movie_emb = encoder(x[movie_mask], edge_index[:, edge_index[1] >= user_mask.sum()] - user_mask.sum())
+                
+                # Combine embeddings
+                combined_emb = torch.zeros_like(x)
+                combined_emb[user_mask] = user_emb
+                combined_emb[movie_mask] = movie_emb
+                embeddings = combined_emb
+            else:
+                embeddings = encoder(x, edge_index)
         else:
             embeddings = encoder(x)
             
         # Calculate loss (only on training nodes)
         # Ensure we're comparing the same dimensionality
+        if embeddings.size(1) != x.size(1):
+            # If dimensions don't match, project embeddings to input dimension
+            proj = nn.Linear(embeddings.size(1), x.size(1)).to(device)
+            embeddings = proj(embeddings)
+            
         loss = criterion(embeddings[train_idx], x[train_idx])
         
         # Backward pass
@@ -402,7 +435,7 @@ def generate_comparison_report(metrics_dict: Dict[str, Any], output_dir: Path) -
 def save_encoder_checkpoint(encoder: torch.nn.Module, 
                              metrics: Dict, 
                              output_dir: Path, 
-                             filename: Optional[str] = None) -> None:
+                             filename: str = 'encoder_checkpoint.pt') -> None:
     """
     Save encoder checkpoint with training metrics.
     
@@ -412,20 +445,17 @@ def save_encoder_checkpoint(encoder: torch.nn.Module,
         output_dir: Directory to save the checkpoint
         filename: Name of the checkpoint file
     """
-    output_dir.mkdir(exist_ok=True, parents=True)
-    checkpoint_path = output_dir / filename
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    if filename is None:
-        filename = f'encoder_{metrics.get("encoder_type", "unknown")}_checkpoint.pth'
-    checkpoint_path = output_dir / filename
+    # Ensure filename is a string
+    if not isinstance(filename, str):
+        filename = 'encoder_checkpoint.pt'
     
+    # Save model state dict
+    checkpoint_path = output_dir / filename
     torch.save({
         'model_state_dict': encoder.state_dict(),
-        'train_losses': metrics['train_losses'],
-        'val_losses': metrics['val_losses'],
-        'encoder_type': metrics.get('encoder_type', 'unknown'),
-        'num_parameters': metrics.get('num_parameters', 0),
-        'training_time': metrics.get('training_time', 0)
-    }, checkpoint_path)
-    
+        'metrics': metrics
+    }, str(checkpoint_path))  # Convert Path to string for torch.save
+
     logger.info(f"Saved encoder checkpoint to {checkpoint_path}")
