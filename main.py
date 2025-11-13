@@ -39,7 +39,8 @@ from utils.encoder_utils import (
     visualize_embeddings,
     save_metrics,
     save_recommendations,
-    save_encoder_checkpoint
+    save_encoder_checkpoint,
+    compare_encoders
 )
 
 
@@ -161,11 +162,71 @@ def main():
 
         logger.info(f"Saved graph tensors to {output_dir / 'graph_tensors.pt'}")
 
-        # Train the graph encoder and generate outputs
-        logger.info("Training graph encoder and generating outputs...")
+        # Compare all encoder types and select the best one
+        logger.info("Comparing different encoder types...")
         try:
-            # Train the encoder
-            encoder, metrics = train_encoder(graph, device, num_epochs=50, learning_rate=0.01)
+            encoder_types = ['gcn', 'gat', 'sage', 'bipartite']
+            
+            # Compare all encoders
+            all_metrics = compare_encoders(
+                graph=graph,
+                device=device,
+                output_dir=output_dir,
+                encoder_types=encoder_types,
+                num_epochs=30,  # Reduced for faster comparison
+                learning_rate=0.01
+            )
+            
+            # Find the best encoder based on validation loss
+            best_encoder_type = min(
+                all_metrics.items(),
+                key=lambda x: x[1]['val_losses'][-1]
+            )[0]
+            
+            logger.info(f"\n{'='*50}")
+            logger.info(f"Best encoder: {best_encoder_type.upper()}")
+            logger.info(f"{'='*50}")
+            
+            # Get the best encoder's output directory
+            best_encoder_dir = output_dir / best_encoder_type
+            
+            # Load the best embeddings
+            embeddings = torch.load(best_encoder_dir / 'node_embeddings.pt')
+            
+            # Generate and save visualizations for the best encoder
+            logger.info("Generating final visualizations with the best encoder...")
+            visualize_embeddings(
+                embeddings=embeddings,
+                output_dir=output_dir / 'best_encoder',
+                encoder_type=best_encoder_type
+            )
+            
+            # Save the best model's metrics to the main output directory
+            best_metrics = all_metrics[best_encoder_type]
+            save_metrics(best_metrics, output_dir / 'best_encoder')
+            
+            # Generate example recommendations using the best encoder
+            save_recommendations(
+                embeddings=embeddings,
+                output_dir=output_dir / 'best_encoder',
+                encoder_type=best_encoder_type
+            )
+            
+            logger.info(f"\nComparison complete! Best encoder: {best_encoder_type.upper()}")
+            logger.info(f"Detailed comparison report saved to: {output_dir / 'encoder_comparison.txt'}")
+            
+        except Exception as e:
+            logger.error(f"Error during encoder comparison: {e}", exc_info=True)
+            logger.info("Falling back to default GCN encoder...")
+            
+            # Fallback to GCN if comparison fails
+            encoder, metrics = train_encoder(
+                graph=graph,
+                device=device,
+                encoder_type='gcn',
+                num_epochs=50,
+                learning_rate=0.01
+            )
             
             # Save the encoder checkpoint
             save_encoder_checkpoint(encoder, metrics, output_dir)
@@ -174,21 +235,15 @@ def main():
             embeddings = metrics['embeddings']
             torch.save(embeddings, output_dir / 'node_embeddings.pt')
             np.save(output_dir / 'node_embeddings.npy', embeddings.cpu().numpy())
-            logger.info(f"Saved node embeddings to {output_dir / 'node_embeddings.pt'}")
             
             # Generate and save visualizations
-            logger.info("Generating embedding visualizations...")
-            visualize_embeddings(embeddings, output_dir)
+            visualize_embeddings(embeddings, output_dir, 'gcn')
             
             # Save training metrics
             save_metrics(metrics, output_dir)
             
             # Generate example recommendations
-            save_recommendations(embeddings, output_dir=output_dir)
-            
-        except Exception as e:
-            logger.error(f"Error during encoder training: {e}", exc_info=True)
-            logger.info("Skipping encoder training...")
+            save_recommendations(embeddings, output_dir=output_dir, encoder_type='gcn')
 
         if viz_dir:
             logger.info(f"Visualizations saved to {viz_dir}")
