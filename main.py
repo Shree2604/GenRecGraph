@@ -114,7 +114,7 @@ def main():
             logger.error("Data validation failed! Check the errors above.")
             # Continue anyway but log the issues
         else:
-            logger.info("✅ Data validation passed successfully!")
+            logger.info("Data validation passed successfully.")
 
     except Exception as e:
         logger.error(f"Error during validation: {e}")

@@ -227,9 +227,9 @@ def run_comprehensive_validation(data_splits: Dict, metadata: Dict, graph) -> Di
 
     # Log results
     if combined_results['overall_valid']:
-        logger.info("✅ All validations passed!")
+        logger.info("All validations passed successfully.")
     else:
-        logger.error(f"❌ Validation failed: {combined_results['total_errors']} errors, {combined_results['total_warnings']} warnings")
+        logger.error(f"Validation failed: {combined_results['total_errors']} errors, {combined_results['total_warnings']} warnings")
 
     for error in data_validation['errors'] + graph_validation['errors']:
         logger.error(f"  Error: {error}")

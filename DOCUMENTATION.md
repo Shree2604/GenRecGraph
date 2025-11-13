@@ -1,12 +1,12 @@
 # GenRecGraph: Comprehensive Project Documentation
 
-## 📋 Project Overview
+## Project Overview
 
 GenRecGraph is a recommendation system project that uses generative graph neural networks for cold-start recommendation problems. The project focuses on addressing the challenge of making recommendations for new users and items with no historical interaction data.
 
-## 🏗️ Current Project Status
+## Current Project Status
 
-### ✅ Completed Components
+### Completed Components
 
 #### 1. **Project Setup & Configuration**
 - **`.gitignore`**: Configured to ignore CSV files in the `Data/` folder while preserving documentation files
@@ -36,7 +36,7 @@ GenRecGraph is a recommendation system project that uses generative graph neural
 - **Enhanced `Data/README.txt`**: Added clear setup instructions for new users
 - **Main usage script** (`main.py`): Demonstrates complete pipeline from data loading to graph creation
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 GenRecGraph/
@@ -55,7 +55,7 @@ GenRecGraph/
         └── graph_builder.py     # Graph construction utilities
 ```
 
-## 🔧 Technical Implementation
+## Technical Implementation
 
 ### Data Loading Pipeline
 
@@ -98,7 +98,7 @@ graph = create_graph_from_ratings(
 - Edge attributes (ratings)
 - PyTorch Geometric compatibility
 
-## 🚀 Usage Instructions
+## Usage Instructions
 
 ### 1. **Setup**
 ```bash
@@ -118,7 +118,7 @@ python main.py
 The script will:
 - Load and preprocess MovieLens data
 - Create bipartite graph
-- **Generate comprehensive visualizations and statistics**
+- Generate comprehensive visualizations and statistics
 - Save processed data and graph for model training
 
 **Generated Visualizations:**
@@ -133,24 +133,23 @@ The script will:
 - `output/bipartite_graph.pkl` - PyTorch Geometric graph object
 - `output/graph_tensors.pt` - Graph tensors for easy loading
 
-
-**✅ Data Processing Pipeline (Complete)**
+**Data Processing Pipeline (Complete)**
 - **MovieLens-25M Dataset Loading**: Efficient loading and preprocessing of all dataset files
 - **Data Filtering & Encoding**: Quality filtering, ID encoding, and temporal splitting
 - **Bipartite Graph Construction**: PyTorch Geometric compatible graphs with rich features
 - **Comprehensive Visualizations**: Statistical plots, graph structure analysis, and data insights
-- **Configuration Management**: Centralized hyperparameter and experiment configuration system 
+- **Configuration Management**: Centralized hyperparameter and experiment configuration system
 
 **See the [DOCUMENTATION](DOCUMENTATION.md) for detailed technical information about the current implementation.**
 
-## 🔬 Research Context
+## Research Context
 
 This project implements the foundation for:
 - **Graph neural networks**: Learning from user-item interaction graphs
 - **Generative models**: Predicting plausible new interactions
 - **Multiple scenarios**: User cold-start, item cold-start, sparse data
 
-## 🛠️ Missing Components (Future Development)
+## Missing Components (Future Development)
 
 The current implementation provides the **data pipeline**. To complete the full GenRecGraph system, these components are planned:
 
@@ -160,7 +159,7 @@ The current implementation provides the **data pipeline**. To complete the full 
    - Main GenRecGraph model class
 
 2. **Training Infrastructure** (`Src/utils/`):
-   - ~~Configuration management~~ ✅ **IMPLEMENTED**: `utils/config.py` (data processing & visualization only)
+   - Configuration management
    - Evaluation metrics (Precision@K, NDCG, Coverage)
    - Training loops and optimization
 
@@ -174,16 +173,16 @@ The current implementation provides the **data pipeline**. To complete the full 
    - Model interpretation
    - Performance analysis
 
-## 🎯 Current Capabilities
+## Current Capabilities
 
-✅ **Data ingestion and preprocessing**
-✅ **Graph construction for GNN training**
-✅ **Cold-start scenario preparation**
-✅ **Comprehensive visualizations and analysis**
-✅ **Configuration management system** 🔄 **NEW!**
-✅ **Clean, modular code structure**
+- **Data ingestion and preprocessing**
+- **Graph construction for GNN training**
+- **Cold-start scenario preparation**
+- **Comprehensive visualizations and analysis**
+- **Configuration management system**
+- **Clean, modular code structure**
 
-## 📈 Next Steps
+## Next Steps
 
 To continue development:
 

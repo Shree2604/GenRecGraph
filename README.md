@@ -2,7 +2,7 @@
 
 A comprehensive framework for addressing cold-start problems in recommendation systems using generative graph neural networks. This project implements various GNN architectures combined with generative decoders to predict and generate user-item interactions for new users and items.
 
-## 🎯 Overview
+## Overview
 
 The cold-start problem is one of the most persistent challenges in recommender systems, occurring when new users or items have no historical interaction data. GenRecGraph addresses this by:
 
@@ -11,7 +11,7 @@ The cold-start problem is one of the most persistent challenges in recommender s
 - **Handling multiple scenarios**: Supporting both cold-start users and cold-start items
 - **Flexible architecture**: Modular design allowing different encoder-decoder combinations
 
-## 📚 Documentation
+## Documentation
 
 For comprehensive technical documentation covering the current implementation, see [`DOCUMENTATION.md`](DOCUMENTATION.md). This includes:
 - Detailed usage examples and code snippets
@@ -19,18 +19,18 @@ For comprehensive technical documentation covering the current implementation, s
 - Current capabilities and limitations
 - Development roadmap and next steps
 
-## 🏗️ Architecture
+## Architecture
 
-### Current Implementation ✅
+### Current Implementation
 
-**✅ Data Processing Pipeline (Complete)**
+**Data Processing Pipeline (Complete)**
 - **MovieLens-25M Dataset Loading**: Efficient loading and preprocessing of all dataset files
 - **Data Filtering & Encoding**: Quality filtering, ID encoding, and temporal splitting
 - **Bipartite Graph Construction**: PyTorch Geometric compatible graphs with rich features
 
 **See [`DOCUMENTATION.md`](DOCUMENTATION.md) for detailed technical information about the current implementation.**
 
-### Planned Components 🔄
+### Planned Components
 
 1. **Graph Encoders**: Learn node embeddings from bipartite user-item graphs
    - Graph Convolutional Networks (GCN)
@@ -50,7 +50,7 @@ For comprehensive technical documentation covering the current implementation, s
    - Training loops with early stopping and validation
    - Comprehensive evaluation metrics for cold-start scenarios
 
-## 📊 Dataset
+## Dataset
 
 **MovieLens-25M**: A large-scale benchmark dataset containing:
 - 25M+ ratings from 162K+ users
@@ -58,7 +58,7 @@ For comprehensive technical documentation covering the current implementation, s
 - Genre information, tags, and temporal data
 - External knowledge graph integration support
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
@@ -79,22 +79,21 @@ pip install -r requirements.txt
 
 ### Current Implementation Status
 
-✅ **Data Pipeline Complete**: Load, preprocess, and create graphs from MovieLens data
-🔄 **Models in Development**: GNN encoders and generative decoders (see Architecture section below)
-📋 **See [`DOCUMENTATION.md`](DOCUMENTATION.md) for complete technical details**
+**Data Pipeline Complete**: Load, preprocess, and create graphs from MovieLens data
+**Models in Development**: GNN encoders and generative decoders (see Architecture section below)
+**See [`DOCUMENTATION.md`](DOCUMENTATION.md) for complete technical details**
 
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 GenRecGraph/
 ├── DOCUMENTATION.md           # Comprehensive technical documentation
 ├── main.py                    # Data loading and graph creation script
 ├── Src/
-│   ├── datapipe/             # ✅ IMPLEMENTED: Data loading and processing
+│   ├── datapipe/             # IMPLEMENTED: Data loading and processing
 │   │   ├── movielens_loader.py    # Dataset loading and preprocessing
 │   │   └── graph_builder.py       # Bipartite graph construction
-│   └── utils/                # ✅ IMPLEMENTED: Visualization utilities
+│   └── utils/                # IMPLEMENTED: Visualization utilities
 │       ├── visualization.py       # Comprehensive data and graph visualizations
 │       ├── config.py             # Configuration management system
 │       └── __init__.py           # Module exports
@@ -103,7 +102,7 @@ GenRecGraph/
 └── README.md                 # This file
 ```
 
-## 📈 Evaluation Metrics
+## Evaluation Metrics
 
 ### Ranking Metrics
 - Precision@K, Recall@K
@@ -121,7 +120,7 @@ GenRecGraph/
 - Cold-start item coverage
 - Performance comparison across scenarios
 
-## 🧪 Experiments
+## Experiments
 
 The framework supports various experimental scenarios:
 
@@ -130,14 +129,14 @@ The framework supports various experimental scenarios:
 3. **Sparse Data**: Users/items with very few interactions
 4. **Temporal Cold-Start**: Future time periods with new entities
 
-## 🔬 Research Applications
+## Research Applications
 
 - **Recommendation Systems**: E-commerce, streaming platforms, social networks
 - **Graph Generation**: Learning and sampling from graph distributions
 - **Transfer Learning**: Adapting models to new domains
 - **Few-Shot Learning**: Learning from limited interaction data
 
-## 📚 Key Features
+## Key Features
 
 - **Modular Design**: Easy to swap encoders and decoders
 - **Scalable**: Efficient implementation for large graphs
@@ -145,7 +144,7 @@ The framework supports various experimental scenarios:
 - **Comprehensive**: Full pipeline from data loading to evaluation
 - **Research-Ready**: Built for experimentation and extension
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our contributing guidelines for details on:
 - Code style and standards
@@ -153,11 +152,11 @@ We welcome contributions! Please see our contributing guidelines for details on:
 - Documentation expectations
 - Pull request process
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📖 Citation
+## Citation
 
 If you use GenRecGraph in your research, please cite:
 
