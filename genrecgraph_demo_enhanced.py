@@ -10,7 +10,7 @@ import logging
 import json
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 # Set up logging
 logging.basicConfig(
@@ -143,8 +143,9 @@ class DemoApp:
             
             # Add movie titles if available
             for rec in recommendations:
-                if 'title' not in rec and str(rec['movie_id']) in self.movie_titles:
-                    rec['title'] = self.movie_titles[str(rec['movie_id'])]
+                movie_id_str = str(rec['movie_id'])
+                if 'title' not in rec and movie_id_str in self.movie_titles:
+                    rec['title'] = self.movie_titles[movie_id_str]
             
             return recommendations
             
@@ -176,8 +177,10 @@ class DemoApp:
             
             # Add movie titles if available
             for pred in predictions:
-                if 'movie_id' in pred and str(pred['movie_id']) in self.movie_titles:
-                    pred['title'] = self.movie_titles[str(pred['movie_id'])]
+                if 'movie_id' in pred:
+                    movie_id_str = str(pred['movie_id'])
+                    if movie_id_str in self.movie_titles:
+                        pred['title'] = self.movie_titles[movie_id_str]
             
             return predictions
             
@@ -212,7 +215,7 @@ def main():
     print(f"\nTop 5 recommendations for user {existing_user_id}:")
     for i, rec in enumerate(recommendations, 1):
         movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
-    print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
+        print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
     
     # Example 2: Get recommendations for a new user (cold-start)
     print("\n" + "="*70)
@@ -224,7 +227,7 @@ def main():
     print(f"\nTop 5 recommendations for new user {new_user_id} (cold-start):")
     for i, rec in enumerate(recommendations, 1):
         movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
-    print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
+        print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
     
     # Example 3: Predict ratings for specific user-movie pairs
     print("\n" + "="*70)
@@ -240,8 +243,33 @@ def main():
         if 'error' in pred:
             print(f"User {pred['user_id']} - Movie {pred['movie_id']}: {pred['error']}")
         else:
-            print(f"User {pred['user_id']} - {pred.get('title', f'Movie {pred["movie_id"]}')}: "
-                  f"{pred['predicted_rating']:.4f}")
+            movie_id = pred['movie_id']
+            movie_title = pred.get('title', f'Movie {movie_id}')
+            rating = pred['predicted_rating']
+            print(f"User {pred['user_id']} - {movie_title}: {rating:.4f}")
+    
+    # Example 4: Get diverse recommendations
+    print("\n" + "="*70)
+    print("EXAMPLE 4: DIVERSE RECOMMENDATIONS")
+    print("="*70)
+    
+    # Low diversity (more personalized)
+    print("\nLow diversity (highly personalized):")
+    low_div_recs = app.get_recommendations(existing_user_id, k=5, diversity=0.1)
+    for i, rec in enumerate(low_div_recs, 1):
+        movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
+        print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
+    
+    # High diversity (more varied)
+    print("\nHigh diversity (more varied recommendations):")
+    high_div_recs = app.get_recommendations(existing_user_id, k=5, diversity=0.8)
+    for i, rec in enumerate(high_div_recs, 1):
+        movie_title = rec.get('title', f'Movie {rec["movie_id"]}')
+        print(f"{i}. {movie_title} (Score: {rec['score']:.4f})")
+    
+    print("\n" + "="*70)
+    print("DEMO COMPLETED SUCCESSFULLY!")
+    print("="*70)
 
 if __name__ == "__main__":
     main()
