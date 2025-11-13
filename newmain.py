@@ -25,23 +25,91 @@ logger = logging.getLogger(__name__)
 # Import local modules
 from Src.utils.decoder_utils import compare_decoders
 from Src.models.encoders import create_encoder
-from Src.utils.encoder_utils import load_encoder
 
 def load_graph_data(data_path: str) -> dict:
-    """Load preprocessed graph data."""
-    logger.info(f"Loading graph data from {data_path}")
-    data = torch.load(data_path)
-    return data
+    """
+    Load and preprocess the raw dataset into a bipartite graph.
+    
+    Args:
+        data_path: Path to the directory containing MovieLens CSV files
+        
+    Returns:
+        Dictionary containing the processed graph data
+    """
+    from pathlib import Path
+    import pandas as pd
+    import torch
+    from torch_geometric.data import Data
+    from Src.datapipe import MovieLensLoader, BipartiteGraphBuilder
+    
+    logger.info("Loading and preprocessing raw dataset...")
+    data_path = Path(data_path)
+    
+    # Initialize data loader
+    loader = MovieLensLoader(data_path)
+    
+    try:
+        # Load and preprocess the data
+        logger.info("Loading MovieLens data...")
+        all_data = loader.load_all_data()
+        
+        # Filter data
+        logger.info("Filtering data...")
+        filtered_ratings = loader.filter_data(
+            min_user_interactions=20,
+            min_movie_interactions=5,
+            rating_threshold=3.0
+        )
+        
+        # Encode IDs
+        logger.info("Encoding user and movie IDs...")
+        encoded_ratings, encoding_info = loader.encode_ids(filtered_ratings)
+        
+        # Create train/val/test splits
+        logger.info("Creating data splits...")
+        data_splits = loader.create_cold_start_split(encoded_ratings)
+        
+        # Build bipartite graph
+        logger.info("Building bipartite graph...")
+        graph_builder = BipartiteGraphBuilder(device='cuda' if torch.cuda.is_available() else 'cpu')
+        
+        graph = graph_builder.build_bipartite_graph(
+            ratings=data_splits['train'],
+            movies=all_data['movies'],
+            encoding_info=encoding_info
+        )
+        
+        # Convert to dictionary for saving
+        graph_data = {
+            'x': graph.x,
+            'edge_index': graph.edge_index,
+            'edge_attr': graph.edge_attr if hasattr(graph, 'edge_attr') else None,
+            'num_users': graph.num_users,
+            'num_movies': graph.num_movies,
+            'train_mask': None,  # Add train/val/test masks if available
+            'val_mask': None,
+            'test_mask': None
+        }
+        
+        logger.info(f"Graph created with {graph.num_nodes} nodes and {graph.num_edges} edges")
+        logger.info(f"Number of users: {graph.num_users}, Number of movies: {graph.num_movies}")
+        
+        return graph_data
+        
+    except Exception as e:
+        logger.error(f"Error loading graph data: {e}")
+        raise
 
 def main():
     # Configuration
     config = {
         'data': {
-            'path': 'output/graph_tensors.pt',  # Path to preprocessed graph
+            'path': 'D:/Shree/GenRecGraph/output/graph_tensors.pt',  # Update this path if needed
         },
         'model': {
             'encoder': {
-                'type': 'sage',  # Using SAGE as the best encoder
+                'path': 'D:/Shree/GenRecGraph/output/sage/encoder_checkpoint.pt',  # Your pre-trained encoder
+                'type': 'sage',
                 'input_dim': 21,  # Should match your feature dimension
                 'hidden_dims': [64, 64],
                 'output_dim': 64,
@@ -61,7 +129,7 @@ def main():
             'batch_size': 128
         },
         'output': {
-            'root_dir': 'output/decoder_comparison',
+            'root_dir': 'D:/Shree/GenRecGraph/output/decoder_comparison',
             'save_models': True
         }
     }
@@ -107,21 +175,27 @@ def main():
         dropout=encoder_config.get('dropout', 0.0)
     ).to(device)
 
-    # Load pre-trained encoder weights if available
-    encoder_path = Path('output/encoder_comparison/sage/best_model.pt')
-    if encoder_path.exists():
-        try:
-            checkpoint = torch.load(encoder_path, map_location=device)
-            if 'model_state_dict' in checkpoint:
-                encoder.load_state_dict(checkpoint['model_state_dict'])
-                logger.info(f"Loaded pre-trained encoder from {encoder_path}")
-            else:
-                encoder.load_state_dict(checkpoint)
-                logger.info(f"Loaded encoder weights (legacy format) from {encoder_path}")
-        except Exception as e:
-            logger.warning(f"Error loading encoder weights: {e}. Using random initialization.")
-    else:
-        logger.warning("No pre-trained encoder found. Using random initialization.")
+    # Load the pre-trained SAGE encoder
+    encoder_path = Path(config['model']['encoder']['path'])
+    if not encoder_path.exists():
+        raise FileNotFoundError(f"Pre-trained encoder not found at {encoder_path}. Please check the path.")
+    
+    try:
+        checkpoint = torch.load(encoder_path, map_location=device)
+        if 'model_state_dict' in checkpoint:
+            encoder.load_state_dict(checkpoint['model_state_dict'])
+            logger.info(f"Loaded pre-trained encoder from {encoder_path}")
+        elif 'encoder' in checkpoint:
+            # Handle case where checkpoint has 'encoder' key
+            encoder.load_state_dict(checkpoint['encoder'])
+            logger.info(f"Loaded pre-trained encoder from {encoder_path} (using 'encoder' key)")
+        else:
+            # Try direct loading as a last resort
+            encoder.load_state_dict(checkpoint)
+            logger.info(f"Loaded encoder weights (direct loading) from {encoder_path}")
+        logger.info("Encoder loaded successfully!")
+    except Exception as e:
+        raise RuntimeError(f"Failed to load encoder from {encoder_path}. Error: {str(e)}")
 
     # Set encoder to evaluation mode
     encoder.eval()
