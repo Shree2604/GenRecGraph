@@ -92,8 +92,11 @@ def train_decoder(
     pos_train, pos_val, pos_test = pos_train.to(device), pos_val.to(device), pos_test.to(device)
     neg_train, neg_val, neg_test = neg_train.to(device), neg_val.to(device), neg_test.to(device)
     
-    # Optimizer and loss
-    optimizer = optim.Adam(decoder.parameters(), lr=lr, weight_decay=weight_decay)
+    # Optimizer - only include parameters that require gradients
+    params = [p for p in decoder.parameters() if p.requires_grad]
+    if not params:  # For parameterless decoders like InnerProductDecoder
+        params = [nn.Parameter(torch.tensor(1.0, requires_grad=True))]
+    optimizer = optim.Adam(params, lr=lr, weight_decay=weight_decay)
     criterion = nn.BCELoss()
     
     # Training loop
@@ -111,15 +114,21 @@ def train_decoder(
         decoder.train()
         optimizer.zero_grad()
         
+        # Get user and movie embeddings for the edges
+        user_emb = embeddings[pos_train[0]]  # [batch_size, embedding_dim]
+        movie_emb = embeddings[pos_train[1]]  # [batch_size, embedding_dim]
+        neg_user_emb = embeddings[neg_train[0]]  # [batch_size, embedding_dim]
+        neg_movie_emb = embeddings[neg_train[1]]  # [batch_size, embedding_dim]
+        
         # Forward pass - handle different decoder types
         if isinstance(decoder, (GraphVAEDecoder, MLPDecoder, BilinearDecoder, AutoregressiveDecoder)):
             # These decoders already apply sigmoid in their forward pass
-            pos_out = decoder(embeddings, pos_train)
-            neg_out = decoder(embeddings, neg_train)
+            pos_out = decoder(user_emb, movie_emb)
+            neg_out = decoder(neg_user_emb, neg_movie_emb)
         else:
             # Fallback for other decoders
-            pos_out = decoder(embeddings, pos_train)
-            neg_out = decoder(embeddings, neg_train)
+            pos_out = decoder(user_emb, movie_emb)
+            neg_out = decoder(neg_user_emb, neg_movie_emb)
             pos_out = torch.sigmoid(pos_out)
             neg_out = torch.sigmoid(neg_out)
         
@@ -192,13 +201,19 @@ def evaluate(
     """
     decoder.eval()
     with torch.no_grad():
+        # Get user and movie embeddings for evaluation
+        pos_user_emb = embeddings[pos_edge_index[0]]
+        pos_movie_emb = embeddings[pos_edge_index[1]]
+        neg_user_emb = embeddings[neg_edge_index[0]]
+        neg_movie_emb = embeddings[neg_edge_index[1]]
+        
         # Handle different decoder types in evaluation
         if isinstance(decoder, (GraphVAEDecoder, MLPDecoder, BilinearDecoder, AutoregressiveDecoder)):
-            pos_pred = decoder(embeddings, pos_edge_index).cpu()
-            neg_pred = decoder(embeddings, neg_edge_index).cpu()
+            pos_pred = decoder(pos_user_emb, pos_movie_emb).cpu()
+            neg_pred = decoder(neg_user_emb, neg_movie_emb).cpu()
         else:
-            pos_pred = torch.sigmoid(decoder(embeddings, pos_edge_index)).cpu()
-            neg_pred = torch.sigmoid(decoder(embeddings, neg_edge_index)).cpu()
+            pos_pred = torch.sigmoid(decoder(pos_user_emb, pos_movie_emb)).cpu()
+            neg_pred = torch.sigmoid(decoder(neg_user_emb, neg_movie_emb)).cpu()
         
         y_true = torch.cat([
             torch.ones(pos_pred.size(0)),
