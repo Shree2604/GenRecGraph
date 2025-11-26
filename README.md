@@ -1,53 +1,47 @@
 <div align="center">
 
-# GenRecGraph: Generative Graph Models for Cold-Start Recommendation
+# 🎯 GenRecGraph
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-1.10%2B-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![PyTorch Geometric](https://img.shields.io/badge/PyG-2.0%2B-3A4E8D?logo=pytorch&logoColor=white)](https://pytorch-geometric.readthedocs.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 </div>
 
-A comprehensive framework for addressing cold-start problems in recommendation systems using generative graph neural networks. This project implements various GNN architectures combined with generative decoders to predict and generate user-item interactions for new users and items.
+> **Generate personalized recommendations for new users and items using Graph Neural Networks**
 
-## 🚀 Features
+## ✨ Features
 
-- **Multiple GNN Architectures**:
-  - Graph Convolutional Networks (GCN)
-  - Graph Attention Networks (GAT)
-  - GraphSAGE (for inductive learning)
+- **Multiple GNN Architectures**: GCN, GAT, and GraphSAGE
+- **Advanced Decoders**: GraphVAE, Autoregressive, Bilinear, MLP
+- **End-to-End Pipeline**: From data processing to recommendations
+- **Cold-Start Ready**: Specialized for new users and items
 
-- **Advanced Decoders**:
-  - Graph Variational Autoencoder (GraphVAE)
-  - Autoregressive Decoder
-  - Bilinear Decoder
-  - MLP Decoder
+## 🚀 Quick Start
 
-- **End-to-End Pipeline**:
-  - Data loading and preprocessing
-  - Graph construction and feature engineering
-  - Model training and evaluation
-  - Cold-start recommendation generation
+1. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## 🏗️ Architecture
+2. **Train the model**
+   ```bash
+   python train.py --model GAT --decoder GraphVAE
+   ```
 
-### Implemented Components
+3. **Generate recommendations**
+   ```python
+   from model import GenRecGraph
+   model = GenRecGraph.load('checkpoints/best_model.pt')
+   recommendations = model.recommend(user_id=42, top_k=10)
+   ```
 
-**1. Data Processing Pipeline**
-- MovieLens-25M Dataset loading and preprocessing
-- Data filtering, cleaning, and feature engineering
-- Bipartite graph construction with PyTorch Geometric
-- Train/validation/test split with temporal holdout
+## 🛠️ Architecture
 
-**2. Graph Neural Network Encoders**
-- **GCN**: Graph Convolutional Networks
-- **GAT**: Graph Attention Networks
-- **GraphSAGE**: For inductive learning scenarios
-
-**3. Generative Decoders**
-- **GraphVAE**: Variational Autoencoder for graph generation
+- **Graph Neural Networks**: Capture complex user-item interactions
+- **Generative Models**: Create meaningful recommendations for cold-start scenarios
+- **Modular Design**: Easily swap components and experiment
 - **Autoregressive**: Sequential prediction of edges
 - **Bilinear**: Efficient dot-product based decoder
 - **MLP**: Multi-layer perceptron decoder
