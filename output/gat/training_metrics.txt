@@ -1,0 +1,20 @@
+Training Metrics
+==================================================
+
+Encoder Type: gat
+Number of Parameters: 5823
+Final Training Loss: 0.048030
+Final Validation Loss: 0.022027
+Training Time: 308.29 seconds
+
+Learning Curve (first 5 and last 5 epochs):
+Epoch   1: Train Loss = 0.394754, Val Loss = 0.163787
+Epoch   2: Train Loss = 0.186371, Val Loss = 0.089253
+Epoch   3: Train Loss = 0.123933, Val Loss = 0.068649
+Epoch   4: Train Loss = 0.107851, Val Loss = 0.071947
+Epoch   5: Train Loss = 0.118290, Val Loss = 0.072652
+Epoch  46: Train Loss = 0.049256, Val Loss = 0.022548
+Epoch  47: Train Loss = 0.048307, Val Loss = 0.022447
+Epoch  48: Train Loss = 0.048307, Val Loss = 0.022352
+Epoch  49: Train Loss = 0.048285, Val Loss = 0.022222
+Epoch  50: Train Loss = 0.048030, Val Loss = 0.022027

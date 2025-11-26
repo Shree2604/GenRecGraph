@@ -165,7 +165,7 @@ def main():
         # Compare all encoder types and select the best one
         logger.info("Comparing different encoder types...")
         try:
-            encoder_types = ['gcn', 'gat', 'sage', 'bipartite']
+            encoder_types = ['gcn', 'gat', 'sage']
             
             # Compare all encoders
             all_metrics = compare_encoders(
@@ -173,7 +173,7 @@ def main():
                 device=device,
                 output_dir=output_dir,
                 encoder_types=encoder_types,
-                num_epochs=30,  # Reduced for faster comparison
+                num_epochs=50,  # Reduced for faster comparison
                 learning_rate=0.01
             )
             

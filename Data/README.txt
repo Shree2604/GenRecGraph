@@ -7,16 +7,10 @@ Users were selected at random for inclusion. All selected users had rated at lea
 
 The data are contained in the files `genome-scores.csv`, `genome-tags.csv`, `links.csv`, `movies.csv`, `ratings.csv` and `tags.csv`. More details about the contents and use of all these files follows.
 
-Setup Instructions
-==================
-
-1. **Read this README file** to understand the dataset structure and usage.
-2. **Download the MovieLens-25M dataset** from: http://grouplens.org/datasets/
-3. **Extract the dataset** and place all CSV files (`genome-scores.csv`, `genome-tags.csv`, `links.csv`, `movies.csv`, `ratings.csv`, `tags.csv`) in this `Data/` folder.
-
-The dataset files are ignored by git via .gitignore to keep the repository clean while allowing local development.
+This and other GroupLens data sets are publicly available for download at <http://grouplens.org/datasets/>.
 
 
+Usage License
 =============
 
 Neither the University of Minnesota nor any of the researchers involved can guarantee the correctness of the data, its suitability for any particular purpose, or the validity of results based on the use of the data set. The data set may be used for any research purposes under the following conditions:

@@ -1,0 +1,6 @@
+Top 5 recommendations for user 0:
+1. Item 136406 (Similarity: 1.0000)
+2. Item 120209 (Similarity: 1.0000)
+3. Item 135394 (Similarity: 1.0000)
+4. Item 29044 (Similarity: 1.0000)
+5. Item 39998 (Similarity: 1.0000)

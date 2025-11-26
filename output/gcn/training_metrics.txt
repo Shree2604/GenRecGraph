@@ -1,0 +1,20 @@
+Training Metrics
+==================================================
+
+Encoder Type: gcn
+Number of Parameters: 5525
+Final Training Loss: 0.070031
+Final Validation Loss: 0.058782
+Training Time: 14.18 seconds
+
+Learning Curve (first 5 and last 5 epochs):
+Epoch   1: Train Loss = 5.816643, Val Loss = 1.635595
+Epoch   2: Train Loss = 1.583324, Val Loss = 1.033459
+Epoch   3: Train Loss = 1.017056, Val Loss = 1.601810
+Epoch   4: Train Loss = 1.541958, Val Loss = 1.638726
+Epoch   5: Train Loss = 1.577978, Val Loss = 1.216165
+Epoch  46: Train Loss = 0.073990, Val Loss = 0.061715
+Epoch  47: Train Loss = 0.073314, Val Loss = 0.060967
+Epoch  48: Train Loss = 0.071531, Val Loss = 0.060089
+Epoch  49: Train Loss = 0.070564, Val Loss = 0.059410
+Epoch  50: Train Loss = 0.070031, Val Loss = 0.058782

@@ -1,0 +1,20 @@
+Training Metrics
+==================================================
+
+Encoder Type: sage
+Number of Parameters: 10901
+Final Training Loss: 0.005789
+Final Validation Loss: 0.001959
+Training Time: 208.08 seconds
+
+Learning Curve (first 5 and last 5 epochs):
+Epoch   1: Train Loss = 0.260075, Val Loss = 0.244733
+Epoch   2: Train Loss = 0.250438, Val Loss = 0.148370
+Epoch   3: Train Loss = 0.155560, Val Loss = 0.106957
+Epoch   4: Train Loss = 0.113446, Val Loss = 0.091485
+Epoch   5: Train Loss = 0.097166, Val Loss = 0.063725
+Epoch  46: Train Loss = 0.006188, Val Loss = 0.002121
+Epoch  47: Train Loss = 0.005895, Val Loss = 0.002090
+Epoch  48: Train Loss = 0.005641, Val Loss = 0.002083
+Epoch  49: Train Loss = 0.005693, Val Loss = 0.002056
+Epoch  50: Train Loss = 0.005789, Val Loss = 0.001959
